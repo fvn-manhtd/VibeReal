@@ -5,8 +5,9 @@ import AVFoundation
 
 @MainActor
 class WhisperStreamer: ObservableObject {
-    @Published var text: String = "Sẵn sàng..."
+    @Published var text: String = "Đang tải model..."
     @Published var isRunning: Bool = false
+    @Published var isModelReady: Bool = false
     @Published var modelProgress: Float = 0
     
     private var whisperKit: WhisperKit?
@@ -19,12 +20,15 @@ class WhisperStreamer: ObservableObject {
     func setupWhisper() {
         Task {
             do {
-                // Tự động chọn model tốt nhất cho thiết bị (thường là base hoặc tiny)
-                let config = WhisperKitConfig(model: "large-v3")
+                text = "Đang tải model... (có thể mất vài phút lần đầu)"
+                // Use "base" model - small enough for iPhone, good accuracy
+                let config = WhisperKitConfig(model: "base", load: true, download: true)
                 whisperKit = try await WhisperKit(config)
-                text = "Model đã sẵn sàng!"
+                isModelReady = true
+                text = "Model đã sẵn sàng! Nhấn nút để bắt đầu."
             } catch {
                 text = "Lỗi tải model: \(error.localizedDescription)"
+                print("❌ WhisperKit setup error: \(error)")
             }
         }
     }
@@ -37,12 +41,47 @@ class WhisperStreamer: ObservableObject {
         }
     }
     
+    private func configureAudioSession() throws {
+        let audioSession = AVAudioSession.sharedInstance()
+        try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
+        try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+        print("✅ Audio session configured successfully")
+    }
+    
     private func start() {
-        guard let whisperKit = whisperKit else { return }
-        isRunning = true
-        text = "Đang nghe..."
+        guard let whisperKit = whisperKit else {
+            text = "Model chưa sẵn sàng, vui lòng đợi..."
+            return
+        }
         
         Task {
+            // 1. Request microphone permission
+            let granted = await requestMicrophonePermission()
+            if !granted {
+                await MainActor.run {
+                    self.text = "Quyền truy cập micro bị từ chối. Vui lòng cấp quyền trong Cài đặt."
+                    self.isRunning = false
+                }
+                return
+            }
+            
+            // 2. Configure audio session
+            do {
+                try configureAudioSession()
+            } catch {
+                await MainActor.run {
+                    self.text = "Lỗi cấu hình audio: \(error.localizedDescription)"
+                    self.isRunning = false
+                }
+                print("❌ Audio session error: \(error)")
+                return
+            }
+            
+            await MainActor.run {
+                self.isRunning = true
+                self.text = "Đang nghe..."
+            }
+            
             do {
                 if audioStreamTranscriber == nil {
                     guard let tokenizer = whisperKit.tokenizer else {
@@ -51,7 +90,7 @@ class WhisperStreamer: ObservableObject {
                         return
                     }
                     
-                    let decodingOptions = DecodingOptions()
+                    let decodingOptions = DecodingOptions(language: "vi")
                     
                     audioStreamTranscriber = AudioStreamTranscriber(
                         audioEncoder: whisperKit.audioEncoder,
@@ -78,8 +117,19 @@ class WhisperStreamer: ObservableObject {
                 
                 try await audioStreamTranscriber?.startStreamTranscription()
             } catch {
-                self.text = "Lỗi: \(error.localizedDescription)"
-                self.isRunning = false
+                await MainActor.run {
+                    self.text = "Lỗi: \(error.localizedDescription)"
+                    self.isRunning = false
+                }
+                print("❌ Transcription error: \(error)")
+            }
+        }
+    }
+    
+    private func requestMicrophonePermission() async -> Bool {
+        return await withCheckedContinuation { continuation in
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                continuation.resume(returning: granted)
             }
         }
     }
@@ -87,8 +137,11 @@ class WhisperStreamer: ObservableObject {
     private func stop() {
         Task {
             await audioStreamTranscriber?.stopStreamTranscription()
+            // Reset transcriber so next session starts fresh
+            audioStreamTranscriber = nil
             await MainActor.run {
                 isRunning = false
+                text = "Đã dừng. Nhấn nút để nói lại."
             }
         }
     }
@@ -122,10 +175,11 @@ struct ContentView: View {
                 .font(.headline)
                 .padding()
                 .frame(width: 200)
-                .background(streamer.isRunning ? Color.red : Color.blue)
+                .background(streamer.isRunning ? Color.red : (streamer.isModelReady ? Color.blue : Color.gray))
                 .foregroundColor(.white)
                 .cornerRadius(30)
             }
+            .disabled(!streamer.isModelReady)
         }
         .padding()
     }
