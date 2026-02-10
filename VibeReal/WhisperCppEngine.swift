@@ -1,7 +1,7 @@
 import Foundation
 import whisper
 
-enum WhisperCppError: LocalizedError {
+nonisolated enum WhisperCppError: LocalizedError {
     case modelLoadFailed(path: String)
     case modelNotLoaded
     case transcriptionFailed(code: Int32)
@@ -18,7 +18,9 @@ enum WhisperCppError: LocalizedError {
     }
 }
 
-final class WhisperCppEngine {
+/// Explicitly nonisolated to escape the project-wide `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`.
+/// This class manages its own thread safety via `contextLock` and `inferenceQueue`.
+nonisolated final class WhisperCppEngine: @unchecked Sendable {
     static let sampleRate = 16_000
 
     private let inferenceQueue = DispatchQueue(label: "com.vibereal.whispercpp.inference", qos: .userInitiated)
@@ -30,6 +32,7 @@ final class WhisperCppEngine {
     }
 
     func loadModel(at path: String) throws {
+        print("🔧 WhisperCppEngine: Loading model from \(path)")
         var contextParams = whisper_context_default_params()
 #if targetEnvironment(simulator)
         contextParams.use_gpu = false
@@ -47,6 +50,7 @@ final class WhisperCppEngine {
         }
         context = newContext
         contextLock.unlock()
+        print("✅ WhisperCppEngine: Model loaded successfully")
     }
 
     func unloadModel() {
@@ -63,11 +67,14 @@ final class WhisperCppEngine {
             return ""
         }
 
+        print("🎤 WhisperCppEngine: transcribe called with \(samples.count) samples, language=\(language)")
+
         return try await withCheckedThrowingContinuation { continuation in
-            inferenceQueue.async {
+            inferenceQueue.async { [self] in
                 self.contextLock.lock()
                 guard let context = self.context else {
                     self.contextLock.unlock()
+                    print("❌ WhisperCppEngine: Model not loaded")
                     continuation.resume(throwing: WhisperCppError.modelNotLoaded)
                     return
                 }
@@ -84,7 +91,9 @@ final class WhisperCppEngine {
                 params.temperature = 0
                 params.n_threads = Int32(max(1, min(8, ProcessInfo.processInfo.activeProcessorCount - 1)))
 
-                let resultCode: Int32 = language.withCString { languagePtr in
+                // Keep the language string alive for the entire duration of whisper_full
+                let languageCopy = language
+                let resultCode: Int32 = languageCopy.withCString { languagePtr in
                     params.language = languagePtr
                     return samples.withUnsafeBufferPointer { sampleBuffer in
                         guard let baseAddress = sampleBuffer.baseAddress else { return -1 }
@@ -94,6 +103,7 @@ final class WhisperCppEngine {
 
                 guard resultCode == 0 else {
                     self.contextLock.unlock()
+                    print("❌ WhisperCppEngine: whisper_full failed with code \(resultCode)")
                     continuation.resume(throwing: WhisperCppError.transcriptionFailed(code: resultCode))
                     return
                 }
@@ -101,6 +111,7 @@ final class WhisperCppEngine {
                 let segmentCount = Int(whisper_full_n_segments(context))
                 if segmentCount == 0 {
                     self.contextLock.unlock()
+                    print("⚠️ WhisperCppEngine: 0 segments returned")
                     continuation.resume(returning: "")
                     return
                 }
@@ -116,6 +127,7 @@ final class WhisperCppEngine {
                     .trimmingCharacters(in: .whitespacesAndNewlines)
 
                 self.contextLock.unlock()
+                print("🎤 WhisperCppEngine: transcription result (\(segmentCount) segments): \(text.prefix(100))")
                 continuation.resume(returning: text)
             }
         }

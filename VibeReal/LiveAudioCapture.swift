@@ -1,7 +1,7 @@
 import Foundation
 import AVFoundation
 
-enum LiveAudioCaptureError: LocalizedError {
+nonisolated enum LiveAudioCaptureError: LocalizedError {
     case conversionSetupFailed
 
     var errorDescription: String? {
@@ -12,7 +12,8 @@ enum LiveAudioCaptureError: LocalizedError {
     }
 }
 
-final class AudioSampleStore {
+/// Explicitly nonisolated — manages its own thread safety via NSLock.
+nonisolated final class AudioSampleStore: @unchecked Sendable {
     private let lock = NSLock()
     private let maxSamples: Int
     private var samples: [Float] = []
@@ -52,6 +53,12 @@ final class AudioSampleStore {
         return Array(samples.suffix(required))
     }
 
+    var currentSampleCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return samples.count
+    }
+
     func rms(seconds: TimeInterval, sampleRate: Int) -> Float {
         lock.lock()
         defer { lock.unlock() }
@@ -72,7 +79,8 @@ final class AudioSampleStore {
     }
 }
 
-final class LiveAudioCapture {
+/// Explicitly nonisolated — audio capture runs on AVAudioEngine's internal threads.
+nonisolated final class LiveAudioCapture: @unchecked Sendable {
     var onSamples: (([Float]) -> Void)?
 
     private let engine = AVAudioEngine()
@@ -92,6 +100,8 @@ final class LiveAudioCapture {
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
+        print("🎙️ LiveAudioCapture: input format = \(inputFormat), output format = \(outputFormat)")
+
         guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
             throw LiveAudioCaptureError.conversionSetupFailed
         }
@@ -105,6 +115,7 @@ final class LiveAudioCapture {
 
         engine.prepare()
         try engine.start()
+        print("✅ LiveAudioCapture: engine started")
     }
 
     func stop() {
@@ -151,3 +162,4 @@ final class LiveAudioCapture {
         onSamples?(chunk)
     }
 }
+

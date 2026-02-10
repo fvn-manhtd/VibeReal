@@ -2,14 +2,14 @@ import SwiftUI
 import Combine
 import AVFoundation
 
-struct ConversationItem: Identifiable, Equatable {
+nonisolated struct ConversationItem: Identifiable, Equatable, Sendable {
     let id: UUID
     var text: String
     let isUser: Bool
     let timestamp: Date
 }
 
-struct WhisperCppModel: Identifiable {
+nonisolated struct WhisperCppModel: Identifiable, Sendable {
     let id: String
     let name: String
 
@@ -51,10 +51,11 @@ class WhisperStreamer: ObservableObject {
     private var currentBubbleText = ""
 
     private let silenceThreshold: TimeInterval = 1.2
-    private let inferenceIntervalNanoseconds: UInt64 = 300_000_000
-    private let inferenceWindowSeconds: TimeInterval = 4.0
-    private let minInferenceAudioSeconds: TimeInterval = 0.8
-    private let speechRmsThreshold: Float = 0.003
+    private let inferenceIntervalNanoseconds: UInt64 = 200_000_000
+    private let inferenceWindowSeconds: TimeInterval = 3.0
+    private let minInferenceAudioSeconds: TimeInterval = 0.5
+    private let speechRmsThreshold: Float = 0.0005
+    private var consecutiveSilenceCount: Int = 0
 
     init() {
         setupWhisper()
@@ -201,21 +202,42 @@ class WhisperStreamer: ObservableObject {
             }
 
             do {
-                try configureAudioSessionForStreaming()
-
                 sampleStore.clear()
                 currentBubbleFinalized = true
                 currentText = ""
                 currentBubbleText = ""
                 isInferenceInFlight = false
 
-                if ProcessInfo.processInfo.isiOSAppOnMac {
+                let onMac = ProcessInfo.processInfo.isiOSAppOnMac
+                print("🎤 WhisperStreamer: isiOSAppOnMac = \(onMac)")
+
+                // Always try to configure audio session (it IS available for iOS apps on Mac)
+                configureAudioSessionForStreaming()
+
+                // Try AVAudioEngine first on ALL platforms (including Mac)
+                var useAudioEngine = true
+                if onMac {
+                    // On Mac, AVAudioEngine may fail — try it, fall back to AVAudioRecorder
+                    do {
+                        audioCapture.onSamples = { [weak self] chunk in
+                            self?.sampleStore.append(chunk)
+                        }
+                        try audioCapture.start()
+                        print("✅ AVAudioEngine works on Mac!")
+                    } catch {
+                        print("⚠️ AVAudioEngine failed on Mac: \(error). Falling back to AVAudioRecorder.")
+                        useAudioEngine = false
+                    }
+                }
+
+                if onMac && !useAudioEngine {
+                    // Fallback: use AVAudioRecorder file-based pipeline
                     try startMacFallbackStreaming()
                     isRunning = true
                     conversation.append(
                         ConversationItem(
                             id: UUID(),
-                            text: "Using My Mac microphone fallback pipeline.",
+                            text: "🎙️ Listening via Mac microphone...",
                             isUser: false,
                             timestamp: Date()
                         )
@@ -223,15 +245,27 @@ class WhisperStreamer: ObservableObject {
                     return
                 }
 
-                audioCapture.onSamples = { [weak self] chunk in
-                    self?.sampleStore.append(chunk)
+                if !onMac {
+                    // iOS path: start AVAudioEngine normally
+                    audioCapture.onSamples = { [weak self] chunk in
+                        self?.sampleStore.append(chunk)
+                    }
+                    try audioCapture.start()
                 }
 
-                try audioCapture.start()
                 isRunning = true
-
                 startStreamingLoop()
+
+                conversation.append(
+                    ConversationItem(
+                        id: UUID(),
+                        text: "🎙️ Listening...",
+                        isUser: false,
+                        timestamp: Date()
+                    )
+                )
             } catch {
+                print("❌ WhisperStreamer: Failed to start capture: \(error)")
                 await MainActor.run {
                     self.conversation.append(
                         ConversationItem(
@@ -247,12 +281,18 @@ class WhisperStreamer: ObservableObject {
         }
     }
 
-    private func configureAudioSessionForStreaming() throws {
-        let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetooth])
-        try session.setPreferredSampleRate(Double(WhisperCppEngine.sampleRate))
-        try session.setPreferredIOBufferDuration(0.01)
-        try session.setActive(true)
+    private func configureAudioSessionForStreaming() {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetooth])
+            try session.setPreferredSampleRate(Double(WhisperCppEngine.sampleRate))
+            try session.setPreferredIOBufferDuration(0.01)
+            try session.setActive(true)
+            print("✅ Audio session configured successfully")
+        } catch {
+            // On Mac, audio session config may partially fail — this is OK, continue anyway
+            print("⚠️ Audio session configuration error (may be OK on Mac): \(error)")
+        }
     }
 
     private func startStreamingLoop() {
@@ -269,22 +309,27 @@ class WhisperStreamer: ObservableObject {
 
     private func startMacFallbackStreaming() throws {
         let fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("vibereal-live-\(UUID().uuidString).caf")
+            .appendingPathComponent("vibereal-live-\(UUID().uuidString).wav")
 
         let recorderSettings: [String: Any] = [
             AVFormatIDKey: kAudioFormatLinearPCM,
             AVSampleRateKey: Double(WhisperCppEngine.sampleRate),
             AVNumberOfChannelsKey: 1,
-            AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsFloatKey: true,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
             AVLinearPCMIsBigEndianKey: false
         ]
 
+        print("🎙️ Mac fallback: recording to \(fileURL.path)")
+
         let recorder = try AVAudioRecorder(url: fileURL, settings: recorderSettings)
+        recorder.isMeteringEnabled = true
         recorder.prepareToRecord()
         guard recorder.record() else {
             throw NSError(domain: "VibeReal.Audio", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unable to start My Mac microphone recording."])
         }
+
+        print("✅ Mac fallback: AVAudioRecorder started, isRecording=\(recorder.isRecording)")
 
         macRecorder = recorder
         macRecordingURL = fileURL
@@ -293,12 +338,23 @@ class WhisperStreamer: ObservableObject {
         macRecorderTask = Task { [weak self] in
             guard let self else { return }
 
+            // Wait a moment for recorder to accumulate initial audio
+            try? await Task.sleep(nanoseconds: 500_000_000)
+
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: inferenceIntervalNanoseconds)
 
                 guard isRunning, let recordingURL = macRecordingURL else { continue }
+
+                // Force-flush the recorder's buffer by updating meters
+                macRecorder?.updateMeters()
+
                 let samples = await loadRecorderSamples(url: recordingURL, maxSeconds: inferenceWindowSeconds)
+
+                print("🎙️ Mac fallback: read \(samples.count) samples from recorder file")
+
                 guard samples.count >= Int(minInferenceAudioSeconds * Double(WhisperCppEngine.sampleRate)) else {
+                    print("⚠️ Mac fallback: not enough samples (\(samples.count) < \(Int(minInferenceAudioSeconds * Double(WhisperCppEngine.sampleRate))))")
                     continue
                 }
 
@@ -368,10 +424,17 @@ class WhisperStreamer: ObservableObject {
             return
         }
 
-        let rms = sampleStore.rms(seconds: 0.25, sampleRate: WhisperCppEngine.sampleRate)
+        let rms = sampleStore.rms(seconds: 0.3, sampleRate: WhisperCppEngine.sampleRate)
+
+        // Only skip transcription after multiple consecutive silence detections
         if rms < speechRmsThreshold {
-            startSilenceTimerIfNeeded()
-            return
+            consecutiveSilenceCount += 1
+            if consecutiveSilenceCount > 3 {
+                startSilenceTimerIfNeeded()
+                return
+            }
+        } else {
+            consecutiveSilenceCount = 0
         }
 
         silenceTimer?.invalidate()
@@ -448,9 +511,30 @@ class WhisperStreamer: ObservableObject {
     }
 
     private func requestMicrophonePermission() async -> Bool {
-        await withCheckedContinuation { continuation in
-            AVAudioSession.sharedInstance().requestRecordPermission { granted in
-                continuation.resume(returning: granted)
+        if ProcessInfo.processInfo.isiOSAppOnMac {
+            // On macOS (running as iPad app), use AVCaptureDevice for permission
+            let status = AVCaptureDevice.authorizationStatus(for: .audio)
+            switch status {
+            case .authorized:
+                print("🎤 Mic permission: already authorized (Mac)")
+                return true
+            case .notDetermined:
+                let granted = await AVCaptureDevice.requestAccess(for: .audio)
+                print("🎤 Mic permission: user responded \(granted) (Mac)")
+                return granted
+            case .denied, .restricted:
+                print("🎤 Mic permission: denied/restricted (Mac)")
+                return false
+            @unknown default:
+                return false
+            }
+        } else {
+            // On iOS, use AVAudioSession
+            return await withCheckedContinuation { continuation in
+                AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                    print("🎤 Mic permission: \(granted) (iOS)")
+                    continuation.resume(returning: granted)
+                }
             }
         }
     }
@@ -491,12 +575,11 @@ class WhisperStreamer: ObservableObject {
             return existing
         }
 
+        // For streaming, the incoming text from the sliding window typically
+        // represents the latest understanding of what was said.
+        // Prefer the incoming result as it has the most recent context.
         if incoming.hasPrefix(existing) {
             return incoming
-        }
-
-        if existing.hasSuffix(incoming) {
-            return existing
         }
 
         if incoming.contains(existing) {
@@ -507,13 +590,17 @@ class WhisperStreamer: ObservableObject {
             return existing
         }
 
+        // For Japanese: try character-level overlap (no spaces between words)
         let overlap = bestOverlapLength(suffixSource: existing, prefixSource: incoming)
         if overlap > 0 {
             let appendStart = incoming.index(incoming.startIndex, offsetBy: overlap)
-            return (existing + String(incoming[appendStart...])).trimmingCharacters(in: .whitespacesAndNewlines)
+            return existing + String(incoming[appendStart...])
         }
 
-        return (existing + " " + incoming).trimmingCharacters(in: .whitespacesAndNewlines)
+        // No overlap found — append directly (no space for Japanese)
+        let isJapanese = selectedLanguage == "ja" || selectedLanguage == "zh" || selectedLanguage == "ko"
+        let separator = isJapanese ? "" : " "
+        return (existing + separator + incoming).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func bestOverlapLength(suffixSource: String, prefixSource: String) -> Int {
@@ -694,15 +781,36 @@ struct ContentView: View {
                     }
                     .padding(.bottom, 30)
                 } else {
-                    HStack(spacing: 4) {
-                        ForEach(0..<5) { _ in
+                    VStack(spacing: 8) {
+                        // Show live partial transcript while streaming
+                        if !streamer.currentText.isEmpty {
+                            HStack {
+                                Spacer()
+                                Text(streamer.currentText)
+                                    .font(.body)
+                                    .foregroundColor(.white.opacity(0.9))
+                                    .padding(12)
+                                    .background(Color.green.opacity(0.5))
+                                    .cornerRadius(16)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 16)
+                                            .stroke(Color.green.opacity(0.3), lineWidth: 1)
+                                    )
+                            }
+                            .padding(.horizontal)
+                        }
+
+                        HStack(spacing: 6) {
                             Circle()
                                 .fill(Color.green)
-                                .frame(width: 8, height: 8)
+                                .frame(width: 10, height: 10)
                                 .opacity(0.8)
+                            Text("Listening...")
+                                .font(.caption)
+                                .foregroundColor(.green.opacity(0.8))
                         }
+                        .padding(.vertical, 8)
                     }
-                    .padding()
                 }
             }
         }
