@@ -1,102 +1,105 @@
 import SwiftUI
-import WhisperKit
 import Combine
 import AVFoundation
 
 struct ConversationItem: Identifiable, Equatable {
     let id: UUID
     var text: String
-    let isUser: Bool // true for user, false for system/other
+    let isUser: Bool
     let timestamp: Date
+}
+
+struct WhisperCppModel: Identifiable {
+    let id: String
+    let name: String
+
+    var downloadURL: URL {
+        URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/\(id)")!
+    }
 }
 
 @MainActor
 class WhisperStreamer: ObservableObject {
     @Published var conversation: [ConversationItem] = []
-    @Published var currentText: String = "" // Tracks ongoing speech
+    @Published var currentText: String = ""
     @Published var isRunning: Bool = false
     @Published var isModelReady: Bool = false
     @Published var isModelLoading: Bool = false
     @Published var modelProgress: Float = 0
-    @Published var selectedLanguage: String = "en" // Default English
-    @Published var selectedModel: String = "base"
-    
-    // Available WhisperKit models (downloaded on demand)
-    let availableModels: [(name: String, id: String)] = [
-        ("Tiny", "tiny"),
-        ("Tiny (EN)", "tiny.en"),
-        ("Base", "base"),
-        ("Base (EN)", "base.en"),
-        ("Small", "small"),
-        ("Small (EN)", "small.en"),
-        ("Medium", "medium"),
-        ("Large v2", "large-v2"),
-        ("Large v3", "large-v3"),
-        ("Distil Large v3", "distil-large-v3")
+    @Published var selectedLanguage: String = "ja"
+    @Published var selectedModel: String = "ggml-small.bin"
+
+    let availableModels: [WhisperCppModel] = [
+        WhisperCppModel(id: "ggml-tiny.bin", name: "Tiny (Ultra Fast)"),
+        WhisperCppModel(id: "ggml-base.bin", name: "Base (Balanced)"),
+        WhisperCppModel(id: "ggml-small.bin", name: "Small (Recommended JA)"),
+        WhisperCppModel(id: "ggml-medium.bin", name: "Medium (High Accuracy JA)"),
+        WhisperCppModel(id: "ggml-large-v3-turbo.bin", name: "Large v3 Turbo (Best Accuracy)")
     ]
-    
-    private var whisperKit: WhisperKit?
-    private var audioStreamTranscriber: AudioStreamTranscriber?
-    private var audioProcessor: AudioProcessor?
-    private var macRecorder: AVAudioRecorder?
+
+    private let whisperEngine = WhisperCppEngine()
+    private let sampleStore = AudioSampleStore(maxSeconds: 20, sampleRate: WhisperCppEngine.sampleRate)
+    private let audioCapture = LiveAudioCapture(sampleRate: WhisperCppEngine.sampleRate)
+
+    private var streamingLoopTask: Task<Void, Never>?
     private var macRecorderTask: Task<Void, Never>?
+    private var macRecorder: AVAudioRecorder?
     private var macRecordingURL: URL?
-    
     private var silenceTimer: Timer?
-    private let silenceThreshold: TimeInterval = 1.5 // Seconds to wait before finalizing a bubble
-    private var displayedTextOffset: Int = 0 // Tracks how much accumulated text has been committed to previous bubbles
-    private var lastFullText: String = "" // Stores the full accumulated text for diffing
-    
+    private var isInferenceInFlight = false
+    private var currentBubbleFinalized = true
+    private var currentBubbleText = ""
+
+    private let silenceThreshold: TimeInterval = 1.2
+    private let inferenceIntervalNanoseconds: UInt64 = 300_000_000
+    private let inferenceWindowSeconds: TimeInterval = 4.0
+    private let minInferenceAudioSeconds: TimeInterval = 0.8
+    private let speechRmsThreshold: Float = 0.003
+
     init() {
         setupWhisper()
     }
-    
+
     func setupWhisper() {
         Task {
-            do {
-                isModelLoading = true
-                let config = WhisperKitConfig(model: selectedModel, load: true, download: true)
-                whisperKit = try await WhisperKit(config)
-                isModelReady = true
-                isModelLoading = false
-                
-                // Add initial system message
-                conversation.append(ConversationItem(id: UUID(), text: "Model đã sẵn sàng! Nhấn nút để bắt đầu.", isUser: false, timestamp: Date()))
-            } catch {
-                isModelLoading = false
-                conversation.append(ConversationItem(id: UUID(), text: "Lỗi tải model: \(error.localizedDescription)", isUser: false, timestamp: Date()))
-                print("❌ WhisperKit setup error: \(error)")
-            }
+            await loadSelectedModel()
         }
     }
-    
+
     func changeModel(to modelId: String) {
         guard modelId != selectedModel else { return }
-        // Stop streaming if active
+
         if isRunning {
             stop()
         }
+
         selectedModel = modelId
         isModelReady = false
-        whisperKit = nil
-        audioStreamTranscriber = nil
-        audioProcessor = nil
-        // Reset audio session so new model can record fresh
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        conversation.append(ConversationItem(id: UUID(), text: "Loading model: \(modelId)...", isUser: false, timestamp: Date()))
-        setupWhisper()
+        conversation.append(
+            ConversationItem(
+                id: UUID(),
+                text: "Loading model: \(modelId)",
+                isUser: false,
+                timestamp: Date()
+            )
+        )
+
+        Task {
+            await loadSelectedModel()
+        }
     }
-    
+
     func clearConversation() {
         if isRunning {
             stop()
         }
+
         conversation.removeAll()
         currentText = ""
-        displayedTextOffset = 0
-        lastFullText = ""
+        currentBubbleFinalized = true
+        currentBubbleText = ""
     }
-    
+
     func toggleStreaming() {
         if isRunning {
             stop()
@@ -105,288 +108,435 @@ class WhisperStreamer: ObservableObject {
         }
     }
 
-    private func makeDecodingOptions() -> DecodingOptions {
-        DecodingOptions(
-            verbose: true,
-            task: .transcribe,
-            language: selectedLanguage,
-            temperature: 0.0,
-            usePrefillPrompt: false,
-            skipSpecialTokens: true
-        )
+    private func loadSelectedModel() async {
+        do {
+            isModelLoading = true
+            isModelReady = false
+            modelProgress = 0
+
+            let modelURL = try await ensureModelAvailable(for: selectedModel)
+            try whisperEngine.loadModel(at: modelURL.path)
+
+            isModelLoading = false
+            isModelReady = true
+            modelProgress = 1
+
+            let modelName = availableModels.first(where: { $0.id == selectedModel })?.name ?? selectedModel
+            conversation.append(
+                ConversationItem(
+                    id: UUID(),
+                    text: "Model ready: \(modelName). Real-time transcription is configured for Japanese by default.",
+                    isUser: false,
+                    timestamp: Date()
+                )
+            )
+        } catch {
+            isModelLoading = false
+            isModelReady = false
+            conversation.append(
+                ConversationItem(
+                    id: UUID(),
+                    text: "Model load failed: \(error.localizedDescription)",
+                    isUser: false,
+                    timestamp: Date()
+                )
+            )
+            print("❌ whisper.cpp setup error: \(error)")
+        }
     }
-    
+
+    private func ensureModelAvailable(for modelId: String) async throws -> URL {
+        let destinationURL = localModelURL(for: modelId)
+
+        if FileManager.default.fileExists(atPath: destinationURL.path) {
+            return destinationURL
+        }
+
+        guard let model = availableModels.first(where: { $0.id == modelId }) else {
+            throw WhisperCppError.modelLoadFailed(path: modelId)
+        }
+
+        let modelsDirectory = modelsDirectoryURL()
+        try FileManager.default.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
+
+        let (tempFileURL, _) = try await URLSession.shared.download(from: model.downloadURL)
+
+        if FileManager.default.fileExists(atPath: destinationURL.path) {
+            try FileManager.default.removeItem(at: destinationURL)
+        }
+
+        try FileManager.default.moveItem(at: tempFileURL, to: destinationURL)
+        return destinationURL
+    }
+
+    private func modelsDirectoryURL() -> URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        return appSupport.appendingPathComponent("WhisperCppModels", isDirectory: true)
+    }
+
+    private func localModelURL(for modelId: String) -> URL {
+        modelsDirectoryURL().appendingPathComponent(modelId)
+    }
+
     private func start() {
-        guard let whisperKit = whisperKit else {
+        guard isModelReady else {
             return
         }
-        
+
         Task {
-            // 1. Request microphone permission
             let granted = await requestMicrophonePermission()
             if !granted {
                 await MainActor.run {
-                    self.conversation.append(ConversationItem(id: UUID(), text: "Quyền truy cập micro bị từ chối.", isUser: false, timestamp: Date()))
+                    self.conversation.append(
+                        ConversationItem(
+                            id: UUID(),
+                            text: "Microphone permission denied.",
+                            isUser: false,
+                            timestamp: Date()
+                        )
+                    )
                     self.isRunning = false
                 }
                 return
             }
-            
-            await MainActor.run {
-                self.isRunning = true
-                self.displayedTextOffset = 0
-                self.lastFullText = ""
-                // Start a new user bubble
-                self.startNewUserBubble()
-            }
-            
+
             do {
+                try configureAudioSessionForStreaming()
+
+                sampleStore.clear()
+                currentBubbleFinalized = true
+                currentText = ""
+                currentBubbleText = ""
+                isInferenceInFlight = false
+
                 if ProcessInfo.processInfo.isiOSAppOnMac {
-                    print("🖥️ Using My Mac fallback recording mode")
-                    try startMacFallbackStreaming(whisperKit: whisperKit, decodingOptions: makeDecodingOptions())
+                    try startMacFallbackStreaming()
+                    isRunning = true
+                    conversation.append(
+                        ConversationItem(
+                            id: UUID(),
+                            text: "Using My Mac microphone fallback pipeline.",
+                            isUser: false,
+                            timestamp: Date()
+                        )
+                    )
                     return
                 }
 
-                if audioStreamTranscriber == nil {
-                    guard let tokenizer = whisperKit.tokenizer else {
-                        isRunning = false
-                        return
-                    }
-
-                    // Use a fresh processor each run to avoid stale engine/format state.
-                    let freshAudioProcessor = AudioProcessor()
-                    whisperKit.audioProcessor = freshAudioProcessor
-                    audioProcessor = freshAudioProcessor
-                    
-                    let decodingOptions = makeDecodingOptions()
-                    
-                    print("🎤 Initializing AudioStreamTranscriber with language: \(selectedLanguage)")
-                    
-                    audioStreamTranscriber = AudioStreamTranscriber(
-                        audioEncoder: whisperKit.audioEncoder,
-                        featureExtractor: whisperKit.featureExtractor,
-                        segmentSeeker: whisperKit.segmentSeeker,
-                        textDecoder: whisperKit.textDecoder,
-                        tokenizer: tokenizer,
-                        audioProcessor: freshAudioProcessor,
-                        decodingOptions: decodingOptions
-                    ) { [weak self] oldState, newState in
-                        guard let self = self else { return }
-                        
-                        Task { @MainActor in
-                            self.handleTranscriptionUpdate(newState: newState)
-                        }
-                    }
+                audioCapture.onSamples = { [weak self] chunk in
+                    self?.sampleStore.append(chunk)
                 }
-                
-                print("▶️ Calling startStreamTranscription")
-                try await audioStreamTranscriber?.startStreamTranscription()
-                print("✅ startStreamTranscription returned")
+
+                try audioCapture.start()
+                isRunning = true
+
+                startStreamingLoop()
             } catch {
                 await MainActor.run {
-                    self.conversation.append(ConversationItem(id: UUID(), text: "Lỗi: \(error.localizedDescription)", isUser: false, timestamp: Date()))
+                    self.conversation.append(
+                        ConversationItem(
+                            id: UUID(),
+                            text: "Failed to start live capture: \(error.localizedDescription)",
+                            isUser: false,
+                            timestamp: Date()
+                        )
+                    )
                     self.isRunning = false
                 }
-                print("❌ Transcription error: \(error)")
             }
         }
     }
-    
-    private func handleTranscriptionUpdate(newState: AudioStreamTranscriber.State) {
-        // Reset silence timer on any update
-        silenceTimer?.invalidate()
-        
-        let fullText = (newState.confirmedSegments.map { $0.text }.joined(separator: " ") + " " + newState.currentText).trimmingCharacters(in: .whitespacesAndNewlines)
-        lastFullText = fullText
-        
-        // Extract only the NEW text since last committed offset
-        let visibleText: String
-        if displayedTextOffset < fullText.count {
-            let startIdx = fullText.index(fullText.startIndex, offsetBy: displayedTextOffset)
-            visibleText = String(fullText[startIdx...]).trimmingCharacters(in: .whitespacesAndNewlines)
-        } else {
-            visibleText = ""
-        }
-        
-        if !visibleText.isEmpty {
-            // Update the last item if it is a user bubble
-            if let lastIndex = conversation.indices.last, conversation[lastIndex].isUser {
-                conversation[lastIndex].text = visibleText
-            } else {
-                startNewUserBubble()
-                conversation[conversation.indices.last!].text = visibleText
-            }
-            
-            // Set timer to finalize bubble if silence persists
-            silenceTimer = Timer.scheduledTimer(withTimeInterval: silenceThreshold, repeats: false) { [weak self] _ in
-                Task { @MainActor in
-                    self?.finalizeCurrentBubbleAndPrepareNext()
-                }
-            }
-        }
-    }
-    
-    private func startNewUserBubble() {
-        // Only start new if previous wasn't empty or if it's the very first one
-        if let last = conversation.last, last.isUser, last.text.isEmpty {
-            return // Re-use empty bubble
-        }
-        conversation.append(ConversationItem(id: UUID(), text: "", isUser: true, timestamp: Date()))
-    }
-    
-    private func finalizeCurrentBubbleAndPrepareNext() {
-        // Commit all accumulated text up to this point
-        displayedTextOffset = lastFullText.count
-        
-        // Only start a new bubble if the current one has content
-        if let last = conversation.last, last.isUser, !last.text.isEmpty {
-            startNewUserBubble()
-        }
-    }
-    
-    private func requestMicrophonePermission() async -> Bool {
-        return await withCheckedContinuation { continuation in
-            AVAudioSession.sharedInstance().requestRecordPermission { granted in
-                continuation.resume(returning: granted)
-            }
-        }
-    }
-    
-    private func startMacFallbackStreaming(whisperKit: WhisperKit, decodingOptions: DecodingOptions) throws {
-        // Configure and activate AVAudioSession BEFORE creating recorder
+
+    private func configureAudioSessionForStreaming() throws {
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
+        try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker, .allowBluetooth])
+        try session.setPreferredSampleRate(Double(WhisperCppEngine.sampleRate))
+        try session.setPreferredIOBufferDuration(0.01)
         try session.setActive(true)
-        
+    }
+
+    private func startStreamingLoop() {
+        streamingLoopTask?.cancel()
+        streamingLoopTask = Task { [weak self] in
+            guard let self else { return }
+
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: inferenceIntervalNanoseconds)
+                await transcribeCurrentWindowIfNeeded()
+            }
+        }
+    }
+
+    private func startMacFallbackStreaming() throws {
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("vibereal-live-\(UUID().uuidString).caf")
 
         let recorderSettings: [String: Any] = [
             AVFormatIDKey: kAudioFormatLinearPCM,
-            AVSampleRateKey: 16_000,
+            AVSampleRateKey: Double(WhisperCppEngine.sampleRate),
             AVNumberOfChannelsKey: 1,
-            AVLinearPCMBitDepthKey: 16,
-            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMBitDepthKey: 32,
+            AVLinearPCMIsFloatKey: true,
             AVLinearPCMIsBigEndianKey: false
         ]
 
         let recorder = try AVAudioRecorder(url: fileURL, settings: recorderSettings)
         recorder.prepareToRecord()
         guard recorder.record() else {
-            throw WhisperError.audioProcessingFailed("Không thể bắt đầu ghi âm trên My Mac")
+            throw NSError(domain: "VibeReal.Audio", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unable to start My Mac microphone recording."])
         }
 
         macRecorder = recorder
         macRecordingURL = fileURL
 
         macRecorderTask?.cancel()
-        macRecorderTask = Task.detached { [weak self] in
-            var lastTextCount = 0
-            
+        macRecorderTask = Task { [weak self] in
+            guard let self else { return }
+
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s interval for more responsive updates
-                guard let self = self else { return }
+                try? await Task.sleep(nanoseconds: inferenceIntervalNanoseconds)
 
-                let (stillRunning, recordingURL) = await MainActor.run {
-                    (self.isRunning, self.macRecordingURL)
-                }
-                if Task.isCancelled || !stillRunning { break }
-                guard let recordingURL else { break }
-
-                let loadedResults = await AudioProcessor.loadAudio(
-                    at: [recordingURL.path],
-                    channelMode: .sumChannels(nil)
-                )
-
-                guard case let .success(samples)? = loadedResults.first,
-                      samples.count >= WhisperKit.sampleRate else {
+                guard isRunning, let recordingURL = macRecordingURL else { continue }
+                let samples = await loadRecorderSamples(url: recordingURL, maxSeconds: inferenceWindowSeconds)
+                guard samples.count >= Int(minInferenceAudioSeconds * Double(WhisperCppEngine.sampleRate)) else {
                     continue
                 }
 
                 do {
-                    let results = try await whisperKit.transcribe(audioArray: samples, decodeOptions: decodingOptions)
-                    if let latestText = results.first?.text, !latestText.isEmpty {
-                        await MainActor.run {
-                            if self.isRunning {
-                                // For fallback mode, we just update the text (naive appending)
-                                // Only update if text length grew
-                                if latestText.count > lastTextCount {
-                                    self.handleTranscriptionUpdateTextOnly(text: latestText)
-                                    lastTextCount = latestText.count
-                                }
-                            }
-                        }
+                    let transcript = try await whisperEngine.transcribe(samples: samples, language: selectedLanguage)
+                    if !transcript.isEmpty {
+                        handleTranscriptionUpdate(text: transcript)
                     }
                 } catch {
-                    print("❌ My Mac fallback transcription error: \(error)")
+                    print("❌ whisper.cpp My Mac fallback error: \(error)")
                 }
             }
         }
     }
-    
-    private func handleTranscriptionUpdateTextOnly(text: String) {
-        // Reset silence timer
-        silenceTimer?.invalidate()
-        lastFullText = text
-        
-        // Extract only the NEW text since last committed offset
-        let visibleText: String
-        if displayedTextOffset < text.count {
-            let startIdx = text.index(text.startIndex, offsetBy: displayedTextOffset)
-            visibleText = String(text[startIdx...]).trimmingCharacters(in: .whitespacesAndNewlines)
-        } else {
-            visibleText = ""
+
+    private func loadRecorderSamples(url: URL, maxSeconds: TimeInterval) async -> [Float] {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async {
+                continuation.resume(returning: Self.readRecentSamples(from: url, maxSeconds: maxSeconds))
+            }
         }
-        
-        if !visibleText.isEmpty {
-            if let lastIndex = conversation.indices.last, conversation[lastIndex].isUser {
-                conversation[lastIndex].text = visibleText
+    }
+
+    private static func readRecentSamples(from url: URL, maxSeconds: TimeInterval) -> [Float] {
+        do {
+            let file = try AVAudioFile(forReading: url)
+            let frameCount = AVAudioFrameCount(file.length)
+            guard frameCount > 0 else { return [] }
+
+            guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frameCount) else {
+                return []
+            }
+            try file.read(into: buffer)
+
+            let frameLength = Int(buffer.frameLength)
+            guard frameLength > 0 else { return [] }
+
+            var samples: [Float] = []
+            if let floatChannels = buffer.floatChannelData {
+                let channel0 = floatChannels[0]
+                samples = Array(UnsafeBufferPointer(start: channel0, count: frameLength))
+            } else if let int16Channels = buffer.int16ChannelData {
+                let channel0 = int16Channels[0]
+                let ints = UnsafeBufferPointer(start: channel0, count: frameLength)
+                samples = ints.map { Float($0) / Float(Int16.max) }
             } else {
-                startNewUserBubble()
-                conversation[conversation.indices.last!].text = visibleText
+                return []
             }
-            
-            silenceTimer = Timer.scheduledTimer(withTimeInterval: silenceThreshold, repeats: false) { [weak self] _ in
-                Task { @MainActor in
-                    self?.finalizeCurrentBubbleAndPrepareNext()
-                }
+
+            let maxSamples = Int(maxSeconds * Double(WhisperCppEngine.sampleRate))
+            if samples.count > maxSamples {
+                samples.removeFirst(samples.count - maxSamples)
+            }
+            return samples
+        } catch {
+            return []
+        }
+    }
+
+    private func transcribeCurrentWindowIfNeeded() async {
+        if !isRunning || isInferenceInFlight {
+            return
+        }
+
+        let window = sampleStore.latest(seconds: inferenceWindowSeconds, sampleRate: WhisperCppEngine.sampleRate)
+        guard window.count >= Int(minInferenceAudioSeconds * Double(WhisperCppEngine.sampleRate)) else {
+            return
+        }
+
+        let rms = sampleStore.rms(seconds: 0.25, sampleRate: WhisperCppEngine.sampleRate)
+        if rms < speechRmsThreshold {
+            startSilenceTimerIfNeeded()
+            return
+        }
+
+        silenceTimer?.invalidate()
+        isInferenceInFlight = true
+
+        do {
+            let transcript = try await whisperEngine.transcribe(samples: window, language: selectedLanguage)
+            if !transcript.isEmpty {
+                handleTranscriptionUpdate(text: transcript)
+            }
+        } catch {
+            print("❌ whisper.cpp streaming error: \(error)")
+        }
+
+        isInferenceInFlight = false
+    }
+
+    private func handleTranscriptionUpdate(text: String) {
+        let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+
+        let mergedText = mergeStreamingText(existing: currentBubbleText, incoming: cleaned)
+        currentBubbleText = mergedText
+        currentText = mergedText
+
+        if let lastIndex = conversation.indices.last,
+           conversation[lastIndex].isUser,
+           !currentBubbleFinalized {
+            conversation[lastIndex].text = mergedText
+        } else {
+            startNewUserBubble()
+            currentBubbleFinalized = false
+            if let lastIndex = conversation.indices.last {
+                conversation[lastIndex].text = mergedText
+            }
+        }
+
+        silenceTimer?.invalidate()
+        silenceTimer = Timer.scheduledTimer(withTimeInterval: silenceThreshold, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.finalizeCurrentBubble()
             }
         }
     }
-    
-    private func stop() {
-        // Set isRunning = false immediately (synchronous) to prevent race conditions
-        // when user taps the button rapidly
-        isRunning = false
+
+    private func startSilenceTimerIfNeeded() {
+        guard !currentBubbleFinalized else { return }
+        guard silenceTimer == nil else { return }
+
+        silenceTimer = Timer.scheduledTimer(withTimeInterval: silenceThreshold, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                self?.finalizeCurrentBubble()
+            }
+        }
+    }
+
+    private func startNewUserBubble() {
+        conversation.append(
+            ConversationItem(
+                id: UUID(),
+                text: "",
+                isUser: true,
+                timestamp: Date()
+            )
+        )
+    }
+
+    private func finalizeCurrentBubble() {
         silenceTimer?.invalidate()
         silenceTimer = nil
-        
-        // Cancel the Mac recorder task first to stop the polling loop
+        currentBubbleFinalized = true
+        currentText = ""
+        currentBubbleText = ""
+    }
+
+    private func requestMicrophonePermission() async -> Bool {
+        await withCheckedContinuation { continuation in
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                continuation.resume(returning: granted)
+            }
+        }
+    }
+
+    private func stop() {
+        isRunning = false
+        streamingLoopTask?.cancel()
+        streamingLoopTask = nil
         macRecorderTask?.cancel()
         macRecorderTask = nil
+
+        silenceTimer?.invalidate()
+        silenceTimer = nil
+
+        audioCapture.stop()
         macRecorder?.stop()
         macRecorder = nil
         if let recordingURL = macRecordingURL {
             try? FileManager.default.removeItem(at: recordingURL)
-            macRecordingURL = nil
         }
-        
-        // Async cleanup for the stream transcriber
-        let transcriber = audioStreamTranscriber
-        audioStreamTranscriber = nil
-        audioProcessor = nil
-        
+        macRecordingURL = nil
+        sampleStore.clear()
+        currentBubbleFinalized = true
+        currentText = ""
+        currentBubbleText = ""
+
         Task {
-            await transcriber?.stopStreamTranscription()
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }
+    }
+
+    private func mergeStreamingText(existing: String, incoming: String) -> String {
+        if existing.isEmpty {
+            return incoming
+        }
+
+        if incoming == existing {
+            return existing
+        }
+
+        if incoming.hasPrefix(existing) {
+            return incoming
+        }
+
+        if existing.hasSuffix(incoming) {
+            return existing
+        }
+
+        if incoming.contains(existing) {
+            return incoming
+        }
+
+        if existing.contains(incoming) {
+            return existing
+        }
+
+        let overlap = bestOverlapLength(suffixSource: existing, prefixSource: incoming)
+        if overlap > 0 {
+            let appendStart = incoming.index(incoming.startIndex, offsetBy: overlap)
+            return (existing + String(incoming[appendStart...])).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        return (existing + " " + incoming).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func bestOverlapLength(suffixSource: String, prefixSource: String) -> Int {
+        let left = Array(suffixSource)
+        let right = Array(prefixSource)
+        let maxLength = min(left.count, right.count)
+        guard maxLength > 0 else { return 0 }
+
+        for length in stride(from: maxLength, through: 1, by: -1) {
+            let leftSlice = left[(left.count - length)..<left.count]
+            let rightSlice = right[0..<length]
+            if leftSlice.elementsEqual(rightSlice) {
+                return length
+            }
+        }
+
+        return 0
     }
 }
 
 struct ContentView: View {
     @StateObject private var streamer = WhisperStreamer()
-    
-    // Languages map: Display Name -> Code
+
     let languages = [
         ("English", "en"),
         ("Japanese", "ja"),
@@ -397,17 +547,14 @@ struct ContentView: View {
         ("German", "de"),
         ("Spanish", "es")
     ]
-    
+
     var body: some View {
         ZStack {
-            // Background
             Color(red: 0.12, green: 0.12, blue: 0.12)
                 .ignoresSafeArea()
-            
+
             VStack(spacing: 0) {
-                // Header
                 HStack {
-                    // Language Selector
                     Menu {
                         ForEach(languages, id: \.1) { lang in
                             Button(action: {
@@ -423,7 +570,7 @@ struct ContentView: View {
                         }
                     } label: {
                         HStack(spacing: 4) {
-                            Text(languages.first(where: { $0.1 == streamer.selectedLanguage })?.0 ?? "English")
+                            Text(languages.first(where: { $0.1 == streamer.selectedLanguage })?.0 ?? "Japanese")
                                 .font(.headline)
                                 .foregroundColor(.white)
                             Image(systemName: "chevron.down")
@@ -435,10 +582,9 @@ struct ContentView: View {
                         .background(Color(white: 0.2))
                         .cornerRadius(8)
                     }
-                    
-                    // Model Selector
+
                     Menu {
-                        ForEach(streamer.availableModels, id: \.id) { model in
+                        ForEach(streamer.availableModels) { model in
                             Button(action: {
                                 streamer.changeModel(to: model.id)
                             }) {
@@ -455,7 +601,7 @@ struct ContentView: View {
                             Image(systemName: "cpu")
                                 .font(.caption)
                                 .foregroundColor(.green)
-                            Text(streamer.availableModels.first(where: { $0.id == streamer.selectedModel })?.name ?? "Base")
+                            Text(streamer.availableModels.first(where: { $0.id == streamer.selectedModel })?.name ?? "Small")
                                 .font(.headline)
                                 .foregroundColor(.white)
                             if streamer.isModelLoading {
@@ -474,10 +620,9 @@ struct ContentView: View {
                         .cornerRadius(8)
                     }
                     .disabled(streamer.isRunning)
-                    
+
                     Spacer()
-                    
-                    // Clear All button
+
                     if !streamer.conversation.isEmpty {
                         Button(action: { streamer.clearConversation() }) {
                             Image(systemName: "trash")
@@ -489,7 +634,7 @@ struct ContentView: View {
                         }
                         .disabled(streamer.isRunning)
                     }
-                    
+
                     if streamer.isRunning {
                         Button(action: { streamer.toggleStreaming() }) {
                             HStack(spacing: 6) {
@@ -509,8 +654,7 @@ struct ContentView: View {
                 }
                 .padding()
                 .background(Color(red: 0.12, green: 0.12, blue: 0.12))
-                
-                // Chat Area
+
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 16) {
@@ -529,8 +673,7 @@ struct ContentView: View {
                         }
                     }
                 }
-                
-                // Footer / Controls
+
                 if !streamer.isRunning {
                     VStack {
                         Button(action: { streamer.toggleStreaming() }) {
@@ -543,7 +686,7 @@ struct ContentView: View {
                         }
                         .disabled(!streamer.isModelReady)
                         .opacity(streamer.isModelReady ? 1 : 0.5)
-                        
+
                         Text(streamer.isModelReady ? "Tap to speak" : "Loading model...")
                             .font(.caption)
                             .foregroundColor(.gray)
@@ -551,7 +694,6 @@ struct ContentView: View {
                     }
                     .padding(.bottom, 30)
                 } else {
-                    // Visualizer placeholder
                     HStack(spacing: 4) {
                         ForEach(0..<5) { _ in
                             Circle()
@@ -570,7 +712,7 @@ struct ContentView: View {
 
 struct ConversationBubble: View {
     let item: ConversationItem
-    
+
     var body: some View {
         HStack(alignment: .bottom) {
             if item.isUser {
@@ -582,10 +724,6 @@ struct ConversationBubble: View {
                         .padding(12)
                         .background(Color.green.opacity(0.8))
                         .cornerRadius(16)
-                    
-//                    Text(item.timestamp, style: .time)
-//                        .font(.caption2)
-//                        .foregroundColor(.gray)
                 }
             } else {
                 VStack(alignment: .leading, spacing: 4) {

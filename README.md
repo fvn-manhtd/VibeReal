@@ -1,7 +1,7 @@
 
 # VibeReal
 
-VibeReal is a Swift-based application integrating WhisperKit for speech-to-text capabilities.
+VibeReal is a Swift-based application integrating `whisper.cpp` for real-time speech-to-text.
 
 ## Prerequisites
 
@@ -20,7 +20,7 @@ VibeReal is a Swift-based application integrating WhisperKit for speech-to-text 
    Double-click on `VibeReal.xcodeproj` to open it in Xcode.
 
 3. **Resolve Dependencies**:
-   Xcode should automatically begin resolving Swift Package Manager dependencies (including `WhisperKit`). Wait for this process to finish.
+   Xcode should automatically begin resolving Swift Package Manager dependencies (the official `whisper.spm` wrapper for `whisper.cpp`). Wait for this process to finish.
 
 4. **Build and Run**:
    - Select your target (e.g., your connected iPhone, iPad, or "My Mac" if supported).
@@ -49,5 +49,6 @@ xcodebuild -scheme VibeReal -destination 'platform=macOS' -allowProvisioningUpda
 
 ## Important Notes
 
-- **Model Download**: The application is currently configured to use the `large-v3` model. On the first run, this model will be downloaded, which may take some time depending on your internet connection.
-- **Performance**: The `large-v3` model is resource-intensive. Running on a real device with a Neural Engine (Apple Silicon) is recommended for better performance compared to the simulator.
+- **Model Download**: The application downloads the selected GGML model from Hugging Face on first use and stores it in app support storage.
+- **Japanese Real-Time**: The default language is `ja` and the default model is `ggml-small.bin` for low-latency Japanese streaming.
+- **Performance**: For the highest Japanese accuracy, use `ggml-medium.bin` or `ggml-large-v3-turbo.bin` on a physical Apple Silicon device.

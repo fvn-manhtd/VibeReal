@@ -112,7 +112,7 @@
 			);
 			name = VibeReal;
 			packageProductDependencies = (
-				0CD275792F3AD128002E22EA /* WhisperKit */,
+				0CD275792F3AD128002E22EA /* whisper */,
 			);
 			productName = VibeReal;
 			productReference = 0CD275492F3AD04B002E22EA /* VibeReal.app */;
@@ -197,7 +197,7 @@
 			mainGroup = 0CD275402F3AD04B002E22EA;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				0CD275782F3AD128002E22EA /* XCRemoteSwiftPackageReference "WhisperKit" */,
+				0CD275782F3AD128002E22EA /* XCRemoteSwiftPackageReference "whisper.spm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 0CD2754A2F3AD04B002E22EA /* Products */;
@@ -592,21 +592,21 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		0CD275782F3AD128002E22EA /* XCRemoteSwiftPackageReference "WhisperKit" */ = {
+		0CD275782F3AD128002E22EA /* XCRemoteSwiftPackageReference "whisper.spm" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/argmaxinc/WhisperKit.git";
+			repositoryURL = "https://github.com/ggerganov/whisper.spm.git";
 			requirement = {
-				branch = main;
+				branch = master;
 				kind = branch;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		0CD275792F3AD128002E22EA /* WhisperKit */ = {
+		0CD275792F3AD128002E22EA /* whisper */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 0CD275782F3AD128002E22EA;
-			productName = WhisperKit;
+			productName = whisper;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
