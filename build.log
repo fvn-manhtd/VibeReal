@@ -1,0 +1,200 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild build -project VibeReal.xcodeproj -scheme VibeReal -destination generic/platform=iOS
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  whisperkit: https://github.com/argmaxinc/WhisperKit.git @ main (2870b46)
+  swift-collections: https://github.com/apple/swift-collections.git @ 1.3.0
+  swift-argument-parser: https://github.com/apple/swift-argument-parser.git @ 1.7.0
+  swift-transformers: https://github.com/huggingface/swift-transformers.git @ 1.1.6
+  Jinja: https://github.com/huggingface/swift-jinja.git @ 2.3.1
+
+ComputePackagePrebuildTargetDependencyGraph
+
+Prepare packages
+
+CreateBuildRequest
+
+SendProjectDescription
+
+CreateBuildOperation
+
+ComputeTargetDependencyGraph
+note: Building targets in dependency order
+note: Target dependency graph (13 targets)
+    Target 'VibeReal' in project 'VibeReal'
+        ➜ Explicit dependency on target 'WhisperKit' in project 'whisperkit'
+    Target 'WhisperKit' in project 'whisperkit'
+        ➜ Explicit dependency on target 'WhisperKit' in project 'whisperkit'
+        ➜ Explicit dependency on target 'Hub' in project 'swift-transformers'
+        ➜ Explicit dependency on target 'Tokenizers' in project 'swift-transformers'
+    Target 'WhisperKit' in project 'whisperkit'
+        ➜ Explicit dependency on target 'Hub' in project 'swift-transformers'
+        ➜ Explicit dependency on target 'Tokenizers' in project 'swift-transformers'
+    Target 'Tokenizers' in project 'swift-transformers'
+        ➜ Explicit dependency on target 'Tokenizers' in project 'swift-transformers'
+        ➜ Explicit dependency on target 'Hub' in project 'swift-transformers'
+        ➜ Explicit dependency on target 'Jinja' in project 'Jinja'
+        ➜ Explicit dependency on target 'OrderedCollections' in project 'swift-collections'
+    Target 'Tokenizers' in project 'swift-transformers'
+        ➜ Explicit dependency on target 'Hub' in project 'swift-transformers'
+        ➜ Explicit dependency on target 'Jinja' in project 'Jinja'
+        ➜ Explicit dependency on target 'OrderedCollections' in project 'swift-collections'
+    Target 'Hub' in project 'swift-transformers'
+        ➜ Explicit dependency on target 'Hub' in project 'swift-transformers'
+        ➜ Explicit dependency on target 'swift-transformers_Hub' in project 'swift-transformers'
+        ➜ Explicit dependency on target 'Jinja' in project 'Jinja'
+        ➜ Explicit dependency on target 'OrderedCollections' in project 'swift-collections'
+    Target 'Hub' in project 'swift-transformers'
+        ➜ Explicit dependency on target 'swift-transformers_Hub' in project 'swift-transformers'
+        ➜ Explicit dependency on target 'Jinja' in project 'Jinja'
+        ➜ Explicit dependency on target 'OrderedCollections' in project 'swift-collections'
+    Target 'Jinja' in project 'Jinja'
+        ➜ Explicit dependency on target 'Jinja' in project 'Jinja'
+        ➜ Explicit dependency on target 'OrderedCollections' in project 'swift-collections'
+    Target 'Jinja' in project 'Jinja'
+        ➜ Explicit dependency on target 'OrderedCollections' in project 'swift-collections'
+    Target 'OrderedCollections' in project 'swift-collections'
+        ➜ Explicit dependency on target 'OrderedCollections' in project 'swift-collections'
+        ➜ Explicit dependency on target 'InternalCollectionsUtilities' in project 'swift-collections'
+    Target 'OrderedCollections' in project 'swift-collections'
+        ➜ Explicit dependency on target 'InternalCollectionsUtilities' in project 'swift-collections'
+    Target 'InternalCollectionsUtilities' in project 'swift-collections' (no dependencies)
+    Target 'swift-transformers_Hub' in project 'swift-transformers' (no dependencies)
+
+GatherProvisioningInputs
+
+CreateBuildDescription
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc --version
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -v -E -dM -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -x c -c /dev/null
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/momc --dry-run --action generate --swift-version 5.0 --sdkroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk --iphoneos-deployment-target 17.0 --module VibeReal /Users/tranmanh/Desktop/LEARN/code/VibeReal/VibeReal/VibeReal.xcdatamodeld /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/DerivedSources/CoreDataGenerated/VibeReal
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --print-asset-tag-combinations --output-format xml1 /Users/tranmanh/Desktop/LEARN/code/VibeReal/VibeReal/Assets.xcassets
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/usr/bin/actool --version --output-format xml1
+
+ExecuteExternalTool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/ld -version_details
+
+ReadFileContents /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/share/docc/features.json
+
+Build description signature: 3c382c082876418afb2561e3bfdb2c06
+Build description path: /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/XCBuildData/3c382c082876418afb2561e3bfdb2c06.xcbuilddata
+ClangStatCache /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk /Users/tranmanh/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphoneos26.2-23C53-3794476bd08197c3e2abd9bb477ef7f7.sdkstatcache
+    cd /Users/tranmanh/Desktop/LEARN/code/VibeReal/VibeReal.xcodeproj
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang-stat-cache /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -o /Users/tranmanh/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphoneos26.2-23C53-3794476bd08197c3e2abd9bb477ef7f7.sdkstatcache
+
+ProcessInfoPlistFile /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/swift-transformers_Hub.bundle/Info.plist /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/swift-transformers.build/Debug-iphoneos/swift-transformers_Hub.build/empty-swift-transformers_Hub.plist (in target 'swift-transformers_Hub' from project 'swift-transformers')
+    cd /Users/tranmanh/Library/Developer/Xcode/DerivedData/VibeReal-fhmrblershmhyqgwbnzhmphodnbi/SourcePackages/checkouts/swift-transformers
+    builtin-infoPlistUtility /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/swift-transformers.build/Debug-iphoneos/swift-transformers_Hub.build/empty-swift-transformers_Hub.plist -producttype com.apple.product-type.bundle -expandbuildsettings -format binary -platform iphoneos -requiredArchitecture arm64 -o /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/swift-transformers_Hub.bundle/Info.plist
+
+ProcessProductPackaging "" /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/VibeReal.app.xcent (in target 'VibeReal' from project 'VibeReal')
+    cd /Users/tranmanh/Desktop/LEARN/code/VibeReal
+    
+    Entitlements:
+    
+    {
+    "application-identifier" = "L8RV535WTD.com.tranducmanh.VibeReal";
+    "com.apple.developer.team-identifier" = L8RV535WTD;
+    "get-task-allow" = 1;
+}
+    
+    builtin-productPackagingUtility -entitlements -format xml -o /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/VibeReal.app.xcent
+
+ExtractAppIntentsMetadata (in target 'Tokenizers' from project 'swift-transformers')
+    cd /Users/tranmanh/Library/Developer/Xcode/DerivedData/VibeReal-fhmrblershmhyqgwbnzhmphodnbi/SourcePackages/checkouts/swift-transformers
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name Tokenizers --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk --xcode-version 17C52 --platform-family iOS --deployment-target 16.0 --bundle-identifier swift-transformers.Tokenizers --output /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/Tokenizers.appintents --target-triple arm64-apple-ios16.0 --binary-file /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/Tokenizers.o --dependency-file /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/swift-transformers.build/Debug-iphoneos/Tokenizers.build/Objects-normal/arm64/Tokenizers_dependency_info.dat --stringsdata-file /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/swift-transformers.build/Debug-iphoneos/Tokenizers.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/swift-transformers.build/Debug-iphoneos/Tokenizers.build/Objects-normal/arm64/Tokenizers.SwiftFileList --metadata-file-list /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/swift-transformers.build/Debug-iphoneos/Tokenizers.build/Tokenizers.DependencyMetadataFileList --static-metadata-file-list /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/swift-transformers.build/Debug-iphoneos/Tokenizers.build/Tokenizers.DependencyStaticMetadataFileList --swift-const-vals-list /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/swift-transformers.build/Debug-iphoneos/Tokenizers.build/Objects-normal/arm64/Tokenizers.SwiftConstValuesFileList --force --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-02-10 15:45:06.204 appintentsmetadataprocessor[39658:423443] Starting appintentsmetadataprocessor export
+2026-02-10 15:45:06.353 appintentsmetadataprocessor[39658:423443] Extracted no relevant App Intents symbols, skipping writing output
+
+ProcessProductPackagingDER /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/VibeReal.app.xcent /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/VibeReal.app.xcent.der (in target 'VibeReal' from project 'VibeReal')
+    cd /Users/tranmanh/Desktop/LEARN/code/VibeReal
+    /usr/bin/derq query -f xml -i /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/VibeReal.app.xcent -o /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/VibeReal.app.xcent.der --raw
+
+SwiftDriver VibeReal normal arm64 com.apple.xcode.tools.swift.compiler (in target 'VibeReal' from project 'VibeReal')
+    cd /Users/tranmanh/Desktop/LEARN/code/VibeReal
+    builtin-SwiftDriver -- /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc -module-name VibeReal -Onone -enforce-exclusivity\=checked @/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/Objects-normal/arm64/VibeReal.SwiftFileList -DDEBUG -default-isolation\=MainActor -enable-bare-slash-regex -enable-upcoming-feature DisableOutwardActorInference -enable-upcoming-feature InferSendableFromCaptures -enable-upcoming-feature GlobalActorIsolatedTypesUsability -enable-upcoming-feature MemberImportVisibility -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-experimental-feature DebugDescriptionMacro -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -target arm64-apple-ios17.0 -g -module-cache-path /Users/tranmanh/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -Xfrontend -serialize-debugging-options -profile-coverage-mapping -profile-generate -enable-testing -index-store-path /Users/tranmanh/Library/Developer/Xcode/DerivedData/VibeReal-fhmrblershmhyqgwbnzhmphodnbi/Index.noindex/DataStore -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -swift-version 5 -I /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos -F /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos -emit-localized-strings -emit-localized-strings-path /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/Objects-normal/arm64 -c -j8 -enable-batch-mode -incremental -Xcc -ivfsstatcache -Xcc /Users/tranmanh/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphoneos26.2-23C53-3794476bd08197c3e2abd9bb477ef7f7.sdkstatcache -output-file-map /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/Objects-normal/arm64/VibeReal-OutputFileMap.json -use-frontend-parseable-output -save-temps -no-color-diagnostics -explicit-module-build -module-cache-path /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -clang-scanner-module-cache-path /Users/tranmanh/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -sdk-module-cache-path /Users/tranmanh/Library/Developer/Xcode/DerivedData/ModuleCache.noindex -serialize-diagnostics -emit-dependencies -emit-module -emit-module-path /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/Objects-normal/arm64/VibeReal.swiftmodule -validate-clang-modules-once -clang-build-session-file /Users/tranmanh/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -I/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/swift-overrides.hmap -emit-const-values -Xfrontend -const-gather-protocols-file -Xfrontend /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/Objects-normal/arm64/VibeReal_const_extract_protocols.json -Xcc -iquote -Xcc /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/VibeReal-generated-files.hmap -Xcc -I/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/VibeReal-own-target-headers.hmap -Xcc -I/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/VibeReal-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal-353f0c53502bcb61114956b40a1ff005-VFS-iphoneos/all-product-headers.yaml -Xcc -iquote -Xcc /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/VibeReal-project-headers.hmap -Xcc -I/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/include -Xcc -I/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/DerivedSources-normal/arm64 -Xcc -I/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/DerivedSources/arm64 -Xcc -I/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/DerivedSources -Xcc -DDEBUG\=1 -emit-objc-header -emit-objc-header-path /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/Objects-normal/arm64/VibeReal-Swift.h -working-directory /Users/tranmanh/Desktop/LEARN/code/VibeReal -experimental-emit-module-separately -disable-cmo
+
+RegisterExecutionPolicyException /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/Tokenizers.o (in target 'Tokenizers' from project 'swift-transformers')
+    cd /Users/tranmanh/Library/Developer/Xcode/DerivedData/VibeReal-fhmrblershmhyqgwbnzhmphodnbi/SourcePackages/checkouts/swift-transformers
+    builtin-RegisterExecutionPolicyException /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/Tokenizers.o
+
+Ld /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/WhisperKit.o normal (in target 'WhisperKit' from project 'whisperkit')
+    cd /Users/tranmanh/Library/Developer/Xcode/DerivedData/VibeReal-fhmrblershmhyqgwbnzhmphodnbi/SourcePackages/checkouts/WhisperKit
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios16.0 -r -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -O0 -w -L/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphoneos -L/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos -L/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib -F/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/EagerLinkingTBDs/Debug-iphoneos -F/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos -iframework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/Library/Frameworks -iframework /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk/Developer/Library/Frameworks -filelist /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/whisperkit.build/Debug-iphoneos/WhisperKit.build/Objects-normal/arm64/WhisperKit.LinkFileList -nostdlib -Xlinker -object_path_lto -Xlinker /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/whisperkit.build/Debug-iphoneos/WhisperKit.build/Objects-normal/arm64/WhisperKit_lto.o -rdynamic -Xlinker -no_deduplicate -Xlinker -debug_variant -Xlinker -dependency_info -Xlinker /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/whisperkit.build/Debug-iphoneos/WhisperKit.build/Objects-normal/arm64/WhisperKit_dependency_info.dat -fobjc-link-runtime -L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos -L/usr/lib/swift -Xlinker -add_ast_path -Xlinker /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/whisperkit.build/Debug-iphoneos/WhisperKit.build/Objects-normal/arm64/WhisperKit.swiftmodule @/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/whisperkit.build/Debug-iphoneos/WhisperKit.build/Objects-normal/arm64/WhisperKit-linker-args.resp -o /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/WhisperKit.o
+
+ExtractAppIntentsMetadata (in target 'WhisperKit' from project 'whisperkit')
+    cd /Users/tranmanh/Library/Developer/Xcode/DerivedData/VibeReal-fhmrblershmhyqgwbnzhmphodnbi/SourcePackages/checkouts/WhisperKit
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name WhisperKit --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk --xcode-version 17C52 --platform-family iOS --deployment-target 16.0 --bundle-identifier whisperkit.WhisperKit --output /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/WhisperKit.appintents --target-triple arm64-apple-ios16.0 --binary-file /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/WhisperKit.o --dependency-file /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/whisperkit.build/Debug-iphoneos/WhisperKit.build/Objects-normal/arm64/WhisperKit_dependency_info.dat --stringsdata-file /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/whisperkit.build/Debug-iphoneos/WhisperKit.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/whisperkit.build/Debug-iphoneos/WhisperKit.build/Objects-normal/arm64/WhisperKit.SwiftFileList --metadata-file-list /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/whisperkit.build/Debug-iphoneos/WhisperKit.build/WhisperKit.DependencyMetadataFileList --static-metadata-file-list /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/whisperkit.build/Debug-iphoneos/WhisperKit.build/WhisperKit.DependencyStaticMetadataFileList --swift-const-vals-list /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/whisperkit.build/Debug-iphoneos/WhisperKit.build/Objects-normal/arm64/WhisperKit.SwiftConstValuesFileList --force --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-02-10 15:45:06.478 appintentsmetadataprocessor[39662:423472] Starting appintentsmetadataprocessor export
+2026-02-10 15:45:06.624 appintentsmetadataprocessor[39662:423472] Extracted no relevant App Intents symbols, skipping writing output
+
+RegisterExecutionPolicyException /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/WhisperKit.o (in target 'WhisperKit' from project 'whisperkit')
+    cd /Users/tranmanh/Library/Developer/Xcode/DerivedData/VibeReal-fhmrblershmhyqgwbnzhmphodnbi/SourcePackages/checkouts/WhisperKit
+    builtin-RegisterExecutionPolicyException /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/WhisperKit.o
+
+SwiftCompile normal arm64 Compiling\ ContentView.swift /Users/tranmanh/Desktop/LEARN/code/VibeReal/VibeReal/ContentView.swift (in target 'VibeReal' from project 'VibeReal')
+
+SwiftCompile normal arm64 /Users/tranmanh/Desktop/LEARN/code/VibeReal/VibeReal/ContentView.swift (in target 'VibeReal' from project 'VibeReal')
+    cd /Users/tranmanh/Desktop/LEARN/code/VibeReal
+    
+/Users/tranmanh/Desktop/LEARN/code/VibeReal/VibeReal/ContentView.swift:128:70: error: cannot convert value of type 'AudioStreamTranscriber.State' to expected argument type 'TranscriptionState'
+                            self.handleTranscriptionUpdate(newState: newState)
+                                                                     ^
+/Users/tranmanh/Desktop/LEARN/code/VibeReal/VibeReal/ContentView.swift:150:33: error: value of type 'TranscriptionState' has no member 'confirmedSegments'
+        let newText = (newState.confirmedSegments.map { $0.text }.joined(separator: " ") + " " + newState.currentText).trimmingCharacters(in: .whitespacesAndNewlines)
+                       ~~~~~~~~ ^~~~~~~~~~~~~~~~~
+/Users/tranmanh/Desktop/LEARN/code/VibeReal/VibeReal/ContentView.swift:150:107: error: value of type 'TranscriptionState' has no member 'currentText'
+        let newText = (newState.confirmedSegments.map { $0.text }.joined(separator: " ") + " " + newState.currentText).trimmingCharacters(in: .whitespacesAndNewlines)
+                                                                                                 ~~~~~~~~ ^~~~~~~~~~~
+/Users/tranmanh/Desktop/LEARN/code/VibeReal/VibeReal/ContentView.swift:166:21: warning: reference to captured var 'self' in concurrently-executing code; this is an error in the Swift 6 language mode
+                    self?.finalizeCurrentBubbleAndPrepareNext()
+                    ^
+/Users/tranmanh/Desktop/LEARN/code/VibeReal/VibeReal/ContentView.swift:253:45: warning: 'requestRecordPermission' was deprecated in iOS 17.0: Please use AVAudioApplication requestRecordPermissionWithCompletionHandler
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                                            ^
+/Users/tranmanh/Desktop/LEARN/code/VibeReal/VibeReal/ContentView.swift:321:55: warning: reference to captured var 'lastTextCount' in concurrently-executing code; this is an error in the Swift 6 language mode
+                                if latestText.count > lastTextCount {
+                                                      ^
+/Users/tranmanh/Desktop/LEARN/code/VibeReal/VibeReal/ContentView.swift:323:37: warning: mutation of captured var 'lastTextCount' in concurrently-executing code; this is an error in the Swift 6 language mode
+                                    lastTextCount = latestText.count
+                                    ^
+/Users/tranmanh/Desktop/LEARN/code/VibeReal/VibeReal/ContentView.swift:346:105: warning: variable 'self' was written to, but never read
+        silenceTimer = Timer.scheduledTimer(withTimeInterval: silenceThreshold, repeats: false) { [weak self] _ in
+                                                                                                        ^
+/Users/tranmanh/Desktop/LEARN/code/VibeReal/VibeReal/ContentView.swift:461:22: warning: 'onChange(of:perform:)' was deprecated in iOS 17.0: Use `onChange` with a two or zero parameter action closure instead.
+                    .onChange(of: streamer.conversation) { _ in
+                     ^
+
+Failed frontend command:
+/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-frontend -frontend -c -primary-file /Users/tranmanh/Desktop/LEARN/code/VibeReal/VibeReal/ContentView.swift /Users/tranmanh/Desktop/LEARN/code/VibeReal/VibeReal/Persistence.swift /Users/tranmanh/Desktop/LEARN/code/VibeReal/VibeReal/VibeRealApp.swift /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/DerivedSources/CoreDataGenerated/VibeReal/Item+CoreDataClass.swift /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/DerivedSources/CoreDataGenerated/VibeReal/Item+CoreDataProperties.swift /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/DerivedSources/CoreDataGenerated/VibeReal/VibeReal+CoreDataModel.swift /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/DerivedSources/GeneratedAssetSymbols.swift -emit-dependencies-path /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/Objects-normal/arm64/ContentView.d -emit-const-values-path /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/Objects-normal/arm64/ContentView.swiftconstvalues -emit-reference-dependencies-path /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/Objects-normal/arm64/ContentView.swiftdeps -serialize-diagnostics-path /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/Objects-normal/arm64/ContentView.dia -emit-localized-strings -emit-localized-strings-path /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/Objects-normal/arm64 -target arm64-apple-ios17.0 -module-can-import-version DeveloperToolsSupport 23.0.4 23.0.4 -module-can-import-version SwiftUI 7.2.5.1 7.2.5 -module-can-import-version UIKit 9126.2.4.1 9126.2.4 -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libFoundationMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#FoundationMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libObservationMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#ObservationMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libPreviewsMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#PreviewsMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libSwiftMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#SwiftMacros -load-resolved-plugin /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/swift/host/plugins/libSwiftUIMacros.dylib\#/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin/swift-plugin-server\#SwiftUIMacros -disable-implicit-swift-modules -Xcc -fno-implicit-modules -Xcc -fno-implicit-module-maps -explicit-swift-module-map-file /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/Objects-normal/arm64/VibeReal-dependencies-1.json -Xllvm -aarch64-use-tbi -enable-objc-interop -stack-check -sdk /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -I /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos -F /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos -no-color-diagnostics -Xcc -fno-color-diagnostics -enable-testing -g -debug-info-format\=dwarf -dwarf-version\=4 -module-cache-path /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/SwiftExplicitPrecompiledModules -profile-generate -profile-coverage-mapping -swift-version 5 -enforce-exclusivity\=checked -Onone -D DEBUG -serialize-debugging-options -const-gather-protocols-file /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/Objects-normal/arm64/VibeReal_const_extract_protocols.json -enable-upcoming-feature DisableOutwardActorInference -enable-upcoming-feature InferSendableFromCaptures -enable-upcoming-feature GlobalActorIsolatedTypesUsability -enable-upcoming-feature MemberImportVisibility -enable-upcoming-feature InferIsolatedConformances -enable-upcoming-feature NonisolatedNonsendingByDefault -enable-experimental-feature DebugDescriptionMacro -enable-bare-slash-regex -default-isolation\=MainActor -empty-abi-descriptor -validate-clang-modules-once -clang-build-session-file /Users/tranmanh/Library/Developer/Xcode/DerivedData/ModuleCache.noindex/Session.modulevalidation -Xcc -working-directory -Xcc /Users/tranmanh/Desktop/LEARN/code/VibeReal -enable-anonymous-context-mangled-names -file-compilation-dir /Users/tranmanh/Desktop/LEARN/code/VibeReal -Xcc -D_LIBCPP_HARDENING_MODE\=_LIBCPP_HARDENING_MODE_DEBUG -Xcc -ivfsstatcache -Xcc /Users/tranmanh/Library/Developer/Xcode/DerivedData/SDKStatCaches.noindex/iphoneos26.2-23C53-3794476bd08197c3e2abd9bb477ef7f7.sdkstatcache -Xcc -I/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/swift-overrides.hmap -Xcc -iquote -Xcc /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/VibeReal-generated-files.hmap -Xcc -I/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/VibeReal-own-target-headers.hmap -Xcc -I/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/VibeReal-all-non-framework-target-headers.hmap -Xcc -ivfsoverlay -Xcc /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal-353f0c53502bcb61114956b40a1ff005-VFS-iphoneos/all-product-headers.yaml -Xcc -iquote -Xcc /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/VibeReal-project-headers.hmap -Xcc -I/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/include -Xcc -I/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/DerivedSources-normal/arm64 -Xcc -I/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/DerivedSources/arm64 -Xcc -I/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/DerivedSources -Xcc -DDEBUG\=1 -no-auto-bridging-header-chaining -module-name VibeReal -frontend-parseable-output -disable-clang-spi -target-sdk-version 26.2 -target-sdk-name iphoneos26.2 -clang-target arm64-apple-ios26.2 -in-process-plugin-server-path /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/libSwiftInProcPluginServer.dylib -o /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/Objects-normal/arm64/ContentView.o -index-unit-output-path /VibeReal.build/Debug-iphoneos/VibeReal.build/Objects-normal/arm64/ContentView.o -index-store-path /Users/tranmanh/Library/Developer/Xcode/DerivedData/VibeReal-fhmrblershmhyqgwbnzhmphodnbi/Index.noindex/DataStore -index-system-modules
+SwiftEmitModule normal arm64 Emitting\ module\ for\ VibeReal (in target 'VibeReal' from project 'VibeReal')
+
+EmitSwiftModule normal arm64 (in target 'VibeReal' from project 'VibeReal')
+    cd /Users/tranmanh/Desktop/LEARN/code/VibeReal
+    
+
+Ld /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/VibeReal.app/__preview.dylib normal (in target 'VibeReal' from project 'VibeReal')
+    cd /Users/tranmanh/Desktop/LEARN/code/VibeReal
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang -Xlinker -reproducible -target arm64-apple-ios17.0 -dynamiclib -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.2.sdk -O0 -L/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos -F/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/PackageFrameworks -F/Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos -install_name @rpath/VibeReal.debug.dylib -dead_strip -rdynamic -Xlinker -no_deduplicate -Xlinker -debug_variant -Xlinker -dependency_info -Xlinker /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/Objects-normal/arm64/VibeReal_dependency_info.dat -Xlinker -no_adhoc_codesign -o /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/VibeReal.app/__preview.dylib
+
+Copy /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/VibeReal.app/swift-transformers_Hub.bundle /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/swift-transformers_Hub.bundle (in target 'VibeReal' from project 'VibeReal')
+    cd /Users/tranmanh/Desktop/LEARN/code/VibeReal
+    builtin-copy -exclude .DS_Store -exclude CVS -exclude .svn -exclude .git -exclude .hg -resolve-src-symlinks /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/swift-transformers_Hub.bundle /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/VibeReal.app
+
+ProcessInfoPlistFile /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/VibeReal.app/Info.plist /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/empty-VibeReal.plist (in target 'VibeReal' from project 'VibeReal')
+    cd /Users/tranmanh/Desktop/LEARN/code/VibeReal
+    builtin-infoPlistUtility /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/empty-VibeReal.plist -producttype com.apple.product-type.application -genpkginfo /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/VibeReal.app/PkgInfo -expandbuildsettings -format binary -platform iphoneos -additionalcontentfile /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Intermediates.noindex/VibeReal.build/Debug-iphoneos/VibeReal.build/assetcatalog_generated_info.plist -scanforprivacyfile /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/VibeReal.app/swift-transformers_Hub.bundle -requiredArchitecture arm64 -o /Users/tranmanh/Desktop/LEARN/code/VibeReal/Build/Products/Debug-iphoneos/VibeReal.app/Info.plist
+
+** BUILD FAILED **
+
+
+The following build commands failed:
+	SwiftCompile normal arm64 /Users/tranmanh/Desktop/LEARN/code/VibeReal/VibeReal/ContentView.swift (in target 'VibeReal' from project 'VibeReal')
+	SwiftCompile normal arm64 Compiling\ ContentView.swift /Users/tranmanh/Desktop/LEARN/code/VibeReal/VibeReal/ContentView.swift (in target 'VibeReal' from project 'VibeReal')
+	Building project VibeReal with scheme VibeReal
+(3 failures)
