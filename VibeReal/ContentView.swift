@@ -12,6 +12,10 @@ class WhisperStreamer: ObservableObject {
     
     private var whisperKit: WhisperKit?
     private var audioStreamTranscriber: AudioStreamTranscriber?
+    private var audioProcessor: AudioProcessor?
+    private var macRecorder: AVAudioRecorder?
+    private var macRecorderTask: Task<Void, Never>?
+    private var macRecordingURL: URL?
     
     init() {
         setupWhisper()
@@ -40,12 +44,16 @@ class WhisperStreamer: ObservableObject {
             start()
         }
     }
-    
-    private func configureAudioSession() throws {
-        let audioSession = AVAudioSession.sharedInstance()
-        try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
-        try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
-        print("✅ Audio session configured successfully")
+
+    private func makeDecodingOptions() -> DecodingOptions {
+        DecodingOptions(
+            verbose: true,
+            task: .transcribe,
+            language: "ja",
+            temperature: 0.0,
+            usePrefillPrompt: false,
+            skipSpecialTokens: true
+        )
     }
     
     private func start() {
@@ -65,32 +73,33 @@ class WhisperStreamer: ObservableObject {
                 return
             }
             
-            // 2. Configure audio session
-            do {
-                try configureAudioSession()
-            } catch {
-                await MainActor.run {
-                    self.text = "Lỗi cấu hình audio: \(error.localizedDescription)"
-                    self.isRunning = false
-                }
-                print("❌ Audio session error: \(error)")
-                return
-            }
-            
             await MainActor.run {
                 self.isRunning = true
                 self.text = "Đang nghe..."
             }
             
             do {
+                if ProcessInfo.processInfo.isiOSAppOnMac {
+                    print("🖥️ Using My Mac fallback recording mode")
+                    try startMacFallbackStreaming(whisperKit: whisperKit, decodingOptions: makeDecodingOptions())
+                    return
+                }
+
                 if audioStreamTranscriber == nil {
                     guard let tokenizer = whisperKit.tokenizer else {
                         text = "Lỗi: Tokenizer chưa sẵn sàng"
                         isRunning = false
                         return
                     }
+
+                    // Use a fresh processor each run to avoid stale engine/format state.
+                    let freshAudioProcessor = AudioProcessor()
+                    whisperKit.audioProcessor = freshAudioProcessor
+                    audioProcessor = freshAudioProcessor
                     
-                    let decodingOptions = DecodingOptions(language: "vi")
+                    let decodingOptions = makeDecodingOptions()
+                    
+                    print("🎤 Initializing AudioStreamTranscriber...")
                     
                     audioStreamTranscriber = AudioStreamTranscriber(
                         audioEncoder: whisperKit.audioEncoder,
@@ -98,10 +107,14 @@ class WhisperStreamer: ObservableObject {
                         segmentSeeker: whisperKit.segmentSeeker,
                         textDecoder: whisperKit.textDecoder,
                         tokenizer: tokenizer,
-                        audioProcessor: whisperKit.audioProcessor,
+                        audioProcessor: freshAudioProcessor,
                         decodingOptions: decodingOptions
                     ) { [weak self] oldState, newState in
                         guard let self = self else { return }
+                        
+                        // Debug print
+                        // print("🔄 Stream Update: currentText='\(newState.currentText)'")
+                        
                         Task { @MainActor in
                             if newState.currentText.isEmpty {
                                 if !newState.confirmedSegments.isEmpty {
@@ -115,7 +128,9 @@ class WhisperStreamer: ObservableObject {
                     }
                 }
                 
+                print("▶️ Calling startStreamTranscription")
                 try await audioStreamTranscriber?.startStreamTranscription()
+                print("✅ startStreamTranscription returned")
             } catch {
                 await MainActor.run {
                     self.text = "Lỗi: \(error.localizedDescription)"
@@ -133,12 +148,85 @@ class WhisperStreamer: ObservableObject {
             }
         }
     }
+
+    private func startMacFallbackStreaming(whisperKit: WhisperKit, decodingOptions: DecodingOptions) throws {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vibereal-live-\(UUID().uuidString).caf")
+
+        let recorderSettings: [String: Any] = [
+            AVFormatIDKey: kAudioFormatLinearPCM,
+            AVSampleRateKey: 16_000,
+            AVNumberOfChannelsKey: 1,
+            AVLinearPCMBitDepthKey: 16,
+            AVLinearPCMIsFloatKey: false,
+            AVLinearPCMIsBigEndianKey: false
+        ]
+
+        let recorder = try AVAudioRecorder(url: fileURL, settings: recorderSettings)
+        recorder.prepareToRecord()
+        guard recorder.record() else {
+            throw WhisperError.audioProcessingFailed("Không thể bắt đầu ghi âm trên My Mac")
+        }
+
+        macRecorder = recorder
+        macRecordingURL = fileURL
+
+        macRecorderTask?.cancel()
+        macRecorderTask = Task.detached { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                guard let self = self else { return }
+
+                // Read @MainActor properties safely from the background thread
+                let (stillRunning, recordingURL) = await MainActor.run {
+                    (self.isRunning, self.macRecordingURL)
+                }
+                if Task.isCancelled || !stillRunning { break }
+                guard let recordingURL else { break }
+
+                // loadAudio now runs on a background thread (not blocking UI)
+                let loadedResults = await AudioProcessor.loadAudio(
+                    at: [recordingURL.path],
+                    channelMode: .sumChannels(nil)
+                )
+
+                guard case let .success(samples)? = loadedResults.first,
+                      samples.count >= WhisperKit.sampleRate else {
+                    continue
+                }
+
+                // transcribe now runs on a background thread (not blocking UI)
+                do {
+                    let results = try await whisperKit.transcribe(audioArray: samples, decodeOptions: decodingOptions)
+                    if let latestText = results.first?.text, !latestText.isEmpty {
+                        await MainActor.run {
+                            if self.isRunning {
+                                self.text = latestText
+                            }
+                        }
+                    }
+                } catch {
+                    print("❌ My Mac fallback transcription error: \(error)")
+                }
+            }
+        }
+    }
     
     private func stop() {
         Task {
             await audioStreamTranscriber?.stopStreamTranscription()
             // Reset transcriber so next session starts fresh
             audioStreamTranscriber = nil
+            audioProcessor = nil
+            macRecorderTask?.cancel()
+            macRecorderTask = nil
+            macRecorder?.stop()
+            macRecorder = nil
+            if let recordingURL = macRecordingURL {
+                try? FileManager.default.removeItem(at: recordingURL)
+                macRecordingURL = nil
+            }
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
             await MainActor.run {
                 isRunning = false
                 text = "Đã dừng. Nhấn nút để nói lại."
