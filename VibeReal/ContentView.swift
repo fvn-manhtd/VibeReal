@@ -16,8 +16,24 @@ class WhisperStreamer: ObservableObject {
     @Published var currentText: String = "" // Tracks ongoing speech
     @Published var isRunning: Bool = false
     @Published var isModelReady: Bool = false
+    @Published var isModelLoading: Bool = false
     @Published var modelProgress: Float = 0
     @Published var selectedLanguage: String = "en" // Default English
+    @Published var selectedModel: String = "base"
+    
+    // Available WhisperKit models (downloaded on demand)
+    let availableModels: [(name: String, id: String)] = [
+        ("Tiny", "tiny"),
+        ("Tiny (EN)", "tiny.en"),
+        ("Base", "base"),
+        ("Base (EN)", "base.en"),
+        ("Small", "small"),
+        ("Small (EN)", "small.en"),
+        ("Medium", "medium"),
+        ("Large v2", "large-v2"),
+        ("Large v3", "large-v3"),
+        ("Distil Large v3", "distil-large-v3")
+    ]
     
     private var whisperKit: WhisperKit?
     private var audioStreamTranscriber: AudioStreamTranscriber?
@@ -28,6 +44,8 @@ class WhisperStreamer: ObservableObject {
     
     private var silenceTimer: Timer?
     private let silenceThreshold: TimeInterval = 1.5 // Seconds to wait before finalizing a bubble
+    private var displayedTextOffset: Int = 0 // Tracks how much accumulated text has been committed to previous bubbles
+    private var lastFullText: String = "" // Stores the full accumulated text for diffing
     
     init() {
         setupWhisper()
@@ -36,18 +54,35 @@ class WhisperStreamer: ObservableObject {
     func setupWhisper() {
         Task {
             do {
-                // Use "base" model - small enough for iPhone, good accuracy
-                let config = WhisperKitConfig(model: "base", load: true, download: true)
+                isModelLoading = true
+                let config = WhisperKitConfig(model: selectedModel, load: true, download: true)
                 whisperKit = try await WhisperKit(config)
                 isModelReady = true
+                isModelLoading = false
                 
                 // Add initial system message
                 conversation.append(ConversationItem(id: UUID(), text: "Model đã sẵn sàng! Nhấn nút để bắt đầu.", isUser: false, timestamp: Date()))
             } catch {
+                isModelLoading = false
                 conversation.append(ConversationItem(id: UUID(), text: "Lỗi tải model: \(error.localizedDescription)", isUser: false, timestamp: Date()))
                 print("❌ WhisperKit setup error: \(error)")
             }
         }
+    }
+    
+    func changeModel(to modelId: String) {
+        guard modelId != selectedModel else { return }
+        // Stop streaming if active
+        if isRunning {
+            stop()
+        }
+        selectedModel = modelId
+        isModelReady = false
+        whisperKit = nil
+        audioStreamTranscriber = nil
+        audioProcessor = nil
+        conversation.append(ConversationItem(id: UUID(), text: "Loading model: \(modelId)...", isUser: false, timestamp: Date()))
+        setupWhisper()
     }
     
     func toggleStreaming() {
@@ -87,6 +122,8 @@ class WhisperStreamer: ObservableObject {
             
             await MainActor.run {
                 self.isRunning = true
+                self.displayedTextOffset = 0
+                self.lastFullText = ""
                 // Start a new user bubble
                 self.startNewUserBubble()
             }
@@ -147,17 +184,25 @@ class WhisperStreamer: ObservableObject {
         // Reset silence timer on any update
         silenceTimer?.invalidate()
         
-        let newText = (newState.confirmedSegments.map { $0.text }.joined(separator: " ") + " " + newState.currentText).trimmingCharacters(in: .whitespacesAndNewlines)
+        let fullText = (newState.confirmedSegments.map { $0.text }.joined(separator: " ") + " " + newState.currentText).trimmingCharacters(in: .whitespacesAndNewlines)
+        lastFullText = fullText
         
-        if !newText.isEmpty {
-             // Update the last item if it is a user bubble
+        // Extract only the NEW text since last committed offset
+        let visibleText: String
+        if displayedTextOffset < fullText.count {
+            let startIdx = fullText.index(fullText.startIndex, offsetBy: displayedTextOffset)
+            visibleText = String(fullText[startIdx...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            visibleText = ""
+        }
+        
+        if !visibleText.isEmpty {
+            // Update the last item if it is a user bubble
             if let lastIndex = conversation.indices.last, conversation[lastIndex].isUser {
-                conversation[lastIndex].text = newText
+                conversation[lastIndex].text = visibleText
             } else {
-                 // Should not happen if start() called startNewUserBubble,
-                 // but safe fallback:
-                 startNewUserBubble()
-                 conversation[conversation.indices.last!].text = newText
+                startNewUserBubble()
+                conversation[conversation.indices.last!].text = visibleText
             }
             
             // Set timer to finalize bubble if silence persists
@@ -178,74 +223,13 @@ class WhisperStreamer: ObservableObject {
     }
     
     private func finalizeCurrentBubbleAndPrepareNext() {
-        // Just make sure we are ready for a new one next time text comes in
-        // In this simple logic, `startNewUserBubble` will be called by `handleTranscriptionUpdate`
-        // if we decide to "close" the current one.
-        // Actually, `audioStreamTranscriber` keeps accumulating text in `newState` until detailed reset.
-        // This is a complex part with `WhisperKit` stream.
-        // For now, visual separation is achieved by checking if we should start a new bubble.
+        // Commit all accumulated text up to this point
+        displayedTextOffset = lastFullText.count
         
-        // HOWEVER, `newState` from callback accumulates everything since start.
-        // So simply appending new bubbles based on silence while the stream continues validly
-        // requires us to manually "diff" the text or reset the transcriber state (which might be slow).
-        
-        // A simpler approach for "VibeReal":
-        // 1. Pause detects -> stop stream? No, that's bad UX.
-        // 2. We need `AudioStreamTranscriber` to support "intermediate finalization".
-        //    Current WhisperKit typically accumulates.
-        
-        // WORKAROUND for "Chat Bubble" effect with continuous stream:
-        // We will stick to ONE growing bubble per session for now, unless we can reliably clear the buffer.
-        // If the user wants "Auto drop new bubble", we technically need to `stop` and `start` quickly or
-        // handle the text diffing manually (e.g. subtract previous confirmed segments).
-        
-        // START: Attempt manual diffing strategy
-        // This is complex. Let's simplify:
-        // The prompt asks for "Auto drop new bubble if speaker pause a few second".
-        // This implies we should treat the previous text as "done".
-        
-        // Ideally, we'd tell `audioStreamTranscriber` to "commit" current text and start fresh.
-        // If `WhisperKit` doesn't support that easily yet, we can't do it perfectly without restarting.
-        
-        // Let's rely on Start/Stop for now to force new bubbles?
-        // OR: Just let the text grow.
-        
-        // Re-reading the request: "Auto drop new bubble if speaker pause a few second"
-        // Okay, I will try to implement a restart-on-silence if feasible, or just simulate it visually.
-        // Since restarting takes time (model reloading/warmup), it might be laggy.
-        
-        // Visual hack:
-        // We can't easily chop the `newState.currentText` because it's context-dependent.
-        // BUT, if we detect silence, we can try to rely on `confirmedSegments`.
-        
-        // For this version 1, I will implement manual STOP/START for distinct bubbles,
-        // OR continuously append to the SAME active bubble.
-        // Implementing "Auto drop" properly requires deep WhisperKit stream control.
-        
-        // Let's implement the "Auto drop" as:
-        // 1. Silence detected.
-        // 2. We mark current bubble as "Final".
-        // 3. We DO NOT clear the stream (because we can't easily).
-        // 4. WAIT. If we don't clear stream, next update brings back OLD text + NEW text.
-        //    So we MUST store the `offset` of text we have already displayed.
-        
-        // TODO: This logic is tricky. I'll stick to a single continuous bubble for established reliability
-        // unless I find a `reset` method.
-        // Checking `AudioStreamTranscriber` source (not available here, but generally):
-        // It usually lacks a "reset buffer" without stopping.
-        
-        // I will implement the START/STOP button properly.
-        // And I will try to implement "Auto drop" by restarting the stream *quickly* if possible,
-        // OR just leave it as one bubble per "Session".
-        
-        // Based on "screenshot", it looks like standard chat.
-        // I will stick to: 1 Session = 1 Bubble (User manually stops or pauses?).
-        // Actually, the prompt says "Has start stop button" AND "Auto drop new buble".
-        // So I will try to restart stream on silence? No, that's too slow.
-        
-        // Let's assume for now: One session = One stream = One growing bubble.
-        // If silence > 2s, we can *try* to restart silently?
-        // Let's verify this behavior later. I will leave the silence timer just for logging for now.
+        // Only start a new bubble if the current one has content
+        if let last = conversation.last, last.isUser, !last.text.isEmpty {
+            startNewUserBubble()
+        }
     }
     
     private func requestMicrophonePermission() async -> Bool {
@@ -292,7 +276,7 @@ class WhisperStreamer: ObservableObject {
             var lastTextCount = 0
             
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 1_000_000_000) // 1s interval
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s interval for more responsive updates
                 guard let self = self else { return }
 
                 let (stillRunning, recordingURL) = await MainActor.run {
@@ -335,19 +319,30 @@ class WhisperStreamer: ObservableObject {
     private func handleTranscriptionUpdateTextOnly(text: String) {
         // Reset silence timer
         silenceTimer?.invalidate()
+        lastFullText = text
         
-        if let lastIndex = conversation.indices.last, conversation[lastIndex].isUser {
-             conversation[lastIndex].text = text
+        // Extract only the NEW text since last committed offset
+        let visibleText: String
+        if displayedTextOffset < text.count {
+            let startIdx = text.index(text.startIndex, offsetBy: displayedTextOffset)
+            visibleText = String(text[startIdx...]).trimmingCharacters(in: .whitespacesAndNewlines)
         } else {
-             startNewUserBubble()
-             conversation[conversation.indices.last!].text = text
+            visibleText = ""
         }
         
-        silenceTimer = Timer.scheduledTimer(withTimeInterval: silenceThreshold, repeats: false) { [weak self] _ in
-             // Fallback logic doesn't support clean "new bubble" because it re-reads the WHOLE audio file.
-             // So it always returns full text.
-             // We can't easily segmentation in this fallback hack.
-             // So we just let it grow.
+        if !visibleText.isEmpty {
+            if let lastIndex = conversation.indices.last, conversation[lastIndex].isUser {
+                conversation[lastIndex].text = visibleText
+            } else {
+                startNewUserBubble()
+                conversation[conversation.indices.last!].text = visibleText
+            }
+            
+            silenceTimer = Timer.scheduledTimer(withTimeInterval: silenceThreshold, repeats: false) { [weak self] _ in
+                Task { @MainActor in
+                    self?.finalizeCurrentBubbleAndPrepareNext()
+                }
+            }
         }
     }
     
@@ -396,11 +391,11 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 // Header
                 HStack {
+                    // Language Selector
                     Menu {
                         ForEach(languages, id: \.1) { lang in
                             Button(action: {
                                 streamer.selectedLanguage = lang.1
-                                // Note: Changing language might require restarting streamer if running
                             }) {
                                 HStack {
                                     Text(lang.0)
@@ -424,6 +419,45 @@ struct ContentView: View {
                         .background(Color(white: 0.2))
                         .cornerRadius(8)
                     }
+                    
+                    // Model Selector
+                    Menu {
+                        ForEach(streamer.availableModels, id: \.id) { model in
+                            Button(action: {
+                                streamer.changeModel(to: model.id)
+                            }) {
+                                HStack {
+                                    Text(model.name)
+                                    if streamer.selectedModel == model.id {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "cpu")
+                                .font(.caption)
+                                .foregroundColor(.green)
+                            Text(streamer.availableModels.first(where: { $0.id == streamer.selectedModel })?.name ?? "Base")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                            if streamer.isModelLoading {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                                    .tint(.green)
+                            } else {
+                                Image(systemName: "chevron.down")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 12)
+                        .background(Color(white: 0.2))
+                        .cornerRadius(8)
+                    }
+                    .disabled(streamer.isRunning)
                     
                     Spacer()
                     
