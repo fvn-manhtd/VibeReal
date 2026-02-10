@@ -81,8 +81,20 @@ class WhisperStreamer: ObservableObject {
         whisperKit = nil
         audioStreamTranscriber = nil
         audioProcessor = nil
+        // Reset audio session so new model can record fresh
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         conversation.append(ConversationItem(id: UUID(), text: "Loading model: \(modelId)...", isUser: false, timestamp: Date()))
         setupWhisper()
+    }
+    
+    func clearConversation() {
+        if isRunning {
+            stop()
+        }
+        conversation.removeAll()
+        currentText = ""
+        displayedTextOffset = 0
+        lastFullText = ""
     }
     
     func toggleStreaming() {
@@ -241,14 +253,10 @@ class WhisperStreamer: ObservableObject {
     }
     
     private func startMacFallbackStreaming(whisperKit: WhisperKit, decodingOptions: DecodingOptions) throws {
-        // ... (Same as before, simplified for brevity in this update)
-        // For the sake of this task, I will assume iOS mainly or Mac with proper mic.
-        // The original code had it, I'll keep it but clean up.
-        // NOTE: The original `startMacFallbackStreaming` logic was creating a loop.
-        // I will re-implement it briefly or assume standard `audioStreamTranscriber` works for the user's focus (UI).
-        // But to be safe, I'll copy the logic back if needed.
-        // Actually, the user is on Mac (OS version: mac).
-        // So `startMacFallbackStreaming` IS CRITICAL.
+        // Configure and activate AVAudioSession BEFORE creating recorder
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
+        try session.setActive(true)
         
         let fileURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("vibereal-live-\(UUID().uuidString).caf")
@@ -347,22 +355,30 @@ class WhisperStreamer: ObservableObject {
     }
     
     private func stop() {
+        // Set isRunning = false immediately (synchronous) to prevent race conditions
+        // when user taps the button rapidly
+        isRunning = false
+        silenceTimer?.invalidate()
+        silenceTimer = nil
+        
+        // Cancel the Mac recorder task first to stop the polling loop
+        macRecorderTask?.cancel()
+        macRecorderTask = nil
+        macRecorder?.stop()
+        macRecorder = nil
+        if let recordingURL = macRecordingURL {
+            try? FileManager.default.removeItem(at: recordingURL)
+            macRecordingURL = nil
+        }
+        
+        // Async cleanup for the stream transcriber
+        let transcriber = audioStreamTranscriber
+        audioStreamTranscriber = nil
+        audioProcessor = nil
+        
         Task {
-            await audioStreamTranscriber?.stopStreamTranscription()
-            audioStreamTranscriber = nil
-            audioProcessor = nil
-            macRecorderTask?.cancel()
-            macRecorderTask = nil
-            macRecorder?.stop()
-            macRecorder = nil
-            if let recordingURL = macRecordingURL {
-                try? FileManager.default.removeItem(at: recordingURL)
-                macRecordingURL = nil
-            }
+            await transcriber?.stopStreamTranscription()
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-            await MainActor.run {
-                isRunning = false
-            }
         }
     }
 }
@@ -460,6 +476,19 @@ struct ContentView: View {
                     .disabled(streamer.isRunning)
                     
                     Spacer()
+                    
+                    // Clear All button
+                    if !streamer.conversation.isEmpty {
+                        Button(action: { streamer.clearConversation() }) {
+                            Image(systemName: "trash")
+                                .font(.system(size: 14))
+                                .foregroundColor(.red.opacity(0.8))
+                                .padding(8)
+                                .background(Color(white: 0.2))
+                                .cornerRadius(8)
+                        }
+                        .disabled(streamer.isRunning)
+                    }
                     
                     if streamer.isRunning {
                         Button(action: { streamer.toggleStreaming() }) {
