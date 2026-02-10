@@ -52,10 +52,11 @@ class WhisperStreamer: ObservableObject {
 
     private let silenceThreshold: TimeInterval = 1.2
     private let inferenceIntervalNanoseconds: UInt64 = 200_000_000
-    private let inferenceWindowSeconds: TimeInterval = 3.0
-    private let minInferenceAudioSeconds: TimeInterval = 0.5
-    private let speechRmsThreshold: Float = 0.0005
+    private let inferenceWindowSeconds: TimeInterval = 1.6
+    private let minInferenceAudioSeconds: TimeInterval = 1.1
+    private let speechRmsThreshold: Float = 0.0001
     private var consecutiveSilenceCount: Int = 0
+    private var streamingStartTime: Date?
 
     init() {
         setupWhisper()
@@ -207,6 +208,7 @@ class WhisperStreamer: ObservableObject {
                 currentText = ""
                 currentBubbleText = ""
                 isInferenceInFlight = false
+                streamingStartTime = Date()
 
                 let onMac = ProcessInfo.processInfo.isiOSAppOnMac
                 print("🎤 WhisperStreamer: isiOSAppOnMac = \(onMac)")
@@ -420,16 +422,24 @@ class WhisperStreamer: ObservableObject {
         }
 
         let window = sampleStore.latest(seconds: inferenceWindowSeconds, sampleRate: WhisperCppEngine.sampleRate)
-        guard window.count >= Int(minInferenceAudioSeconds * Double(WhisperCppEngine.sampleRate)) else {
+        let sampleCount = window.count
+        let minRequired = Int(minInferenceAudioSeconds * Double(WhisperCppEngine.sampleRate))
+        guard sampleCount >= minRequired else {
+            print("📊 Skipping inference: only \(sampleCount)/\(minRequired) samples")
             return
         }
 
         let rms = sampleStore.rms(seconds: 0.3, sampleRate: WhisperCppEngine.sampleRate)
+        print("📊 Audio stats: samples=\(sampleCount), RMS=\(String(format: "%.6f", rms)), silenceCount=\(consecutiveSilenceCount)")
 
-        // Only skip transcription after multiple consecutive silence detections
-        if rms < speechRmsThreshold {
+        // Grace period: skip silence detection for first 3 seconds to allow warmup
+        let secondsSinceStart = Date().timeIntervalSince(streamingStartTime ?? Date())
+        let pastWarmup = secondsSinceStart > 3.0
+
+        // Only skip transcription after many consecutive silence detections AND past warmup
+        if rms < speechRmsThreshold && pastWarmup {
             consecutiveSilenceCount += 1
-            if consecutiveSilenceCount > 3 {
+            if consecutiveSilenceCount > 8 {
                 startSilenceTimerIfNeeded()
                 return
             }
@@ -439,38 +449,97 @@ class WhisperStreamer: ObservableObject {
 
         silenceTimer?.invalidate()
         isInferenceInFlight = true
+        defer { isInferenceInFlight = false }
+
+        // Pad audio with silence to meet whisper.cpp's internal minimum of 1 second (16000 samples)
+        var samples = window
+        let whisperMinSamples = WhisperCppEngine.sampleRate  // 16000 = 1 second
+        if samples.count < whisperMinSamples {
+            samples.append(contentsOf: [Float](repeating: 0, count: whisperMinSamples - samples.count))
+        }
 
         do {
-            let transcript = try await whisperEngine.transcribe(samples: window, language: selectedLanguage)
+            let transcript = try await whisperEngine.transcribe(samples: samples, language: selectedLanguage)
             if !transcript.isEmpty {
+                print("✅ Got transcript: \(transcript.prefix(80))")
                 handleTranscriptionUpdate(text: transcript)
+            } else {
+                print("📊 Whisper returned empty transcript")
             }
         } catch {
             print("❌ whisper.cpp streaming error: \(error)")
         }
+    }
 
-        isInferenceInFlight = false
+    /// Known whisper hallucination patterns to filter out
+    private static let hallucinationPatterns: [String] = [
+        "[BLANK_AUDIO]", "(BLANK_AUDIO)",
+        "[music]", "(music)", "[Music]", "(Music)",
+        "[applause]", "(applause)",
+        "[laughter]", "(laughter)",
+        "ご視聴ありがとうございました",
+        "お疲れ様でした",
+        "おやすみなさい",
+        "Thank you for watching",
+        "Thanks for watching",
+        "Subtitles by",
+        "MoistCr1TiKaL",
+    ]
+
+    private func isHallucination(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Check known hallucination phrases
+        for pattern in Self.hallucinationPatterns {
+            if trimmed.localizedCaseInsensitiveContains(pattern) {
+                return true
+            }
+        }
+
+        // Filter bracketed stage directions only (avoid dropping real speech in brackets).
+        if (trimmed.hasPrefix("[") && trimmed.hasSuffix("]")) ||
+           (trimmed.hasPrefix("(") && trimmed.hasSuffix(")")) {
+            let inner = String(trimmed.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+            let stageDirectionKeywords = [
+                "音", "無音", "ノイズ", "music", "applause", "laughter", "blank_audio"
+            ]
+            if stageDirectionKeywords.contains(where: { inner.localizedCaseInsensitiveContains($0) }) {
+                return true
+            }
+        }
+
+        // Filter highly repetitive text (same short phrase repeated 3+ times)
+        if trimmed.count > 6 {
+            let chars = Array(trimmed)
+            for patternLen in 1...min(chars.count / 3, 20) {
+                let sub = String(chars[0..<patternLen])
+                let repetitions = trimmed.components(separatedBy: sub).count - 1
+                if repetitions >= 3 && sub.count * repetitions >= trimmed.count / 2 {
+                    return true
+                }
+            }
+        }
+
+        return false
     }
 
     private func handleTranscriptionUpdate(text: String) {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        print("📝 Live Transcript: \"\(cleaned)\"")
+
         guard !cleaned.isEmpty else { return }
+
+        // Filter out whisper hallucinations
+        if isHallucination(cleaned) {
+            print("🚫 Filtered hallucination: \(cleaned.prefix(60))")
+            return
+        }
 
         let mergedText = mergeStreamingText(existing: currentBubbleText, incoming: cleaned)
         currentBubbleText = mergedText
         currentText = mergedText
 
-        if let lastIndex = conversation.indices.last,
-           conversation[lastIndex].isUser,
-           !currentBubbleFinalized {
-            conversation[lastIndex].text = mergedText
-        } else {
-            startNewUserBubble()
-            currentBubbleFinalized = false
-            if let lastIndex = conversation.indices.last {
-                conversation[lastIndex].text = mergedText
-            }
-        }
+        upsertCurrentUserBubble(with: mergedText)
 
         silenceTimer?.invalidate()
         silenceTimer = Timer.scheduledTimer(withTimeInterval: silenceThreshold, repeats: false) { [weak self] _ in
@@ -478,6 +547,27 @@ class WhisperStreamer: ObservableObject {
                 self?.finalizeCurrentBubble()
             }
         }
+    }
+
+    private func upsertCurrentUserBubble(with text: String) {
+        if let lastIndex = conversation.indices.last,
+           conversation[lastIndex].isUser,
+           !currentBubbleFinalized {
+            let existing = conversation[lastIndex]
+            let updatedItem = ConversationItem(
+                id: existing.id,
+                text: text,
+                isUser: existing.isUser,
+                timestamp: existing.timestamp
+            )
+            var updatedConversation = conversation
+            updatedConversation[lastIndex] = updatedItem
+            conversation = updatedConversation
+            return
+        }
+
+        startNewUserBubble(with: text)
+        currentBubbleFinalized = false
     }
 
     private func startSilenceTimerIfNeeded() {
@@ -491,15 +581,14 @@ class WhisperStreamer: ObservableObject {
         }
     }
 
-    private func startNewUserBubble() {
-        conversation.append(
-            ConversationItem(
-                id: UUID(),
-                text: "",
-                isUser: true,
-                timestamp: Date()
-            )
+    private func startNewUserBubble(with text: String) {
+        let item = ConversationItem(
+            id: UUID(),
+            text: text,
+            isUser: true,
+            timestamp: Date()
         )
+        conversation = conversation + [item]
     }
 
     private func finalizeCurrentBubble() {
